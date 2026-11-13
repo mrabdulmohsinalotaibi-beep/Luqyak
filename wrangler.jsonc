@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "luqyak",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "keep_vars": true,
+  "workers_dev": false,
+  "vars": {
+    "AUTH_FROM_EMAIL": "Luqyak <no-reply@mail.athat.app>"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "luqyak",
+      "database_id": "1281f824-fec9-4c03-92d6-9bfb2a1a0dca"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "luqyak-private-photos"
+    }
+  ],
+  "services": [
+    {
+      "binding": "LIVE_CHANNEL",
+      "service": "luqyak-live",
+      "environment": "production"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/30 * * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
