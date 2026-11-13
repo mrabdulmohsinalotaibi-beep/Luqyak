@@ -1,0 +1,13 @@
+{
+  "name": "luqyak",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check worker.js",
+    "deploy": "wrangler deploy --keep-vars"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
