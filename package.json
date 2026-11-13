@@ -10,7 +10,7 @@
   "devDependencies": {
     "wrangler": "^4.0.0"
   },
-  "description": "Production Luqyak Cloudflare Worker with automated GitHub build validation",
+  "description": "Luqyak Cloudflare Worker — verification of automatic GitHub-to-Cloudflare deployments",
   "engines": {
     "node": ">=20"
   }
