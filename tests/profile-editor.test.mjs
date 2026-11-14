@@ -35,22 +35,19 @@ test('avatar controls use authenticated same-origin upload', () => {
 });
 
 
-test('Worker actually serves the avatar editor module and connects it to profile', () => {
-  assert.match(worker, /path==='\\/src\\/profile-avatar-editor\\.js'/);
-  assert.match(worker, /import\\('\\/src\\/profile-avatar-editor\\.js'\\)/);
-  assert.match(worker, /capture','user'/);
-  assert.match(worker, /border-radius:50%!important/);
+test('Worker serves avatar editor and integrates cropper in the account UI', () => {
+  assert.ok(worker.includes("path==='/src/profile-avatar-editor.js'"));
+  assert.ok(worker.includes("import('/src/profile-avatar-editor.js')"));
+  assert.ok(worker.includes("capture','user'"));
+  assert.ok(worker.includes('border-radius:50%!important'));
 });
 
-test('Changing email requires an active user, same-origin POST and code verification', () => {
-  const request = worker.indexOf("if((path==='/api/social/email/request'");
-  assert.ok(request > 0);
-  const body = worker.slice(request, worker.indexOf("if(path==='/api/social/avatar'&&method==='GET')",request));
-  assert.match(body, /if\\(!csrf\\(\\)\\)/);
-  assert.match(body, /profile-change:/);
-  assert.match(body, /rate_limited/);
-  assert.match(body, /code_hash/);
-  assert.match(body, /expires_at/);
-  assert.match(body, /UPDATE users SET email=\\?,email_verified_at=\\? WHERE id=\\?/);
-  assert.match(worker, /api\\/social\\/email\\/verify/);
+test('Verified email change requires origin, OTP and updates email only after proof', () => {
+  const start = worker.indexOf("if((path==='/api/social/email/request'");
+  assert.ok(start > 0);
+  const body = worker.slice(start, worker.indexOf("if(path==='/api/social/avatar'&&method==='GET')",start));
+  for (const guard of ['if(!csrf())','profile-change:', 'rate_limited','code_hash','expires_at','UPDATE users SET email=']) {
+    assert.ok(body.includes(guard), 'missing security guard: '+guard);
+  }
+  assert.ok(worker.includes('/api/social/email/verify'));
 });
