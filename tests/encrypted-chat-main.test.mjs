@@ -36,3 +36,20 @@ test('main social chat tab launches encrypted client by default and labels legac
  assert.match(html,/قراءة الرسائل القديمة غير المشفّرة/);
  assert.match(html,/المفتاح والرسائل المقروءة محفوظان محليًا/);
 });
+
+
+test('encrypted private chat offers user-controlled local history recovery without exporting device keys',async()=>{
+ const {Script}=await import('node:vm');
+ const response=await worker.fetch(new Request('https://luqyak.athat.app/private'),{},{waitUntil(){}});
+ assert.equal(response.status,200);
+ const html=await response.text();
+ assert.match(html,/lkInstallHistoryBackup/);
+ assert.match(html,/PBKDF2-SHA256/);
+ assert.match(html,/additionalData:aad/);
+ assert.match(html,/legacy_key:true/);
+ assert.match(html,/لا تحتوي النسخة على مفتاح التشفير الخاص/);
+ const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+ const backupScript=scripts.find(s=>s.includes('lkInstallHistoryBackup'));
+ assert.ok(backupScript,'backup script must be present in rendered HTML');
+ assert.doesNotThrow(()=>new Script(backupScript,{filename:'private-chat-inline.js'}));
+});
