@@ -3,23 +3,13 @@ import assert from 'node:assert/strict';
 import {Script} from 'node:vm';
 import worker from '../worker.js';
 
-test('private chat includes opt-in identity backup and recovery controls',async()=>{
+test('retired encrypted chat page redirects to private relationships circle',async()=>{
  const response=await worker.fetch(new Request('https://luqyak.athat.app/private'),{}, {waitUntil(){}});
- assert.equal(response.status,200);
- const html=await response.text();
- assert.match(html,/lkMakeRecoverableIdentity/);
- assert.match(html,/lkImportIdentityBackup/);
- assert.match(html,/luqyak-encrypted-identity/);
- assert.match(html,/remote\.key\.fingerprint!==bundle\.fingerprint/);
- assert.match(html,/لم تؤكد حفظ نسخة المفتاح/);
- const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
- assert.ok(scripts.length>0);
- for(const [,script] of scripts)new Script(script);
+ assert.equal(response.status,302);
+ assert.equal(response.headers.get('location'),'https://luqyak.athat.app/app?tab=chats');
 });
-test('new-device key is never silently overwritten and recovery remains account bound',async()=>{
- const html=await (await worker.fetch(new Request('https://luqyak.athat.app/private'),{}, {waitUntil(){}})).text();
- assert.match(html,/bundle\.account_id!==account\.id/);
- assert.match(html,/await put\('settings',\{privateKey,publicKey\},'keypair:'\+account\.id\)/);
- assert.match(html,/if\(!account\|\|!myPair\|\|!keyConflict\)/);
- assert.match(html,/privateKey=await crypto\.subtle\.importKey\('jwk',jwk,\{name:'ECDH',namedCurve:'P-256'\},false/);
+test('old encryption setup cannot be reached through retired chat route',async()=>{
+ const response=await worker.fetch(new Request('https://luqyak.athat.app/private?peer=any'),{}, {waitUntil(){}});
+ assert.equal(response.status,302);
+ assert.equal(response.headers.get('location'),'https://luqyak.athat.app/app?tab=chats');
 });
