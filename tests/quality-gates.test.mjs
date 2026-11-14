@@ -76,6 +76,32 @@ test('anonymous users cannot submit meetup or chat data',async()=>{
   }
 });
 
+
+test('account chat explicitly discloses that server-backed messages are not end-to-end encrypted',async()=>{
+  const response=await get('/account-chat');
+  assert.equal(response.status,200);
+  const html=await response.text();
+  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);
+  assert.match(html,/href="\/private"/);
+  assert.match(response.headers.get('cache-control')||'',/no-store/);
+});
+
+test('private image responses require authorized viewing and are not publicly cacheable',async()=>{
+  const source=(await import('node:fs/promises')).readFile;
+  const code=await source(new URL('../worker.js',import.meta.url),'utf8');
+  assert.match(code,/if\(!access\.view\)return json\(\{error:'not_found'\},404\)/);
+  assert.match(code,/'cache-control':'private, no-store'/);
+  assert.match(code,/member\?\.status==='accepted'/);
+});
+
+test('account chat rate-limits and deduplicates sends, but is NOT cryptographically authenticated E2EE',async()=>{
+  const code=await (await import('node:fs/promises')).readFile(new URL('../worker.js',import.meta.url),'utf8');
+  assert.match(code,/INSERT OR IGNORE INTO lk_account_messages/);
+  assert.match(code,/client_id/);
+  assert.match(code,/rate_limited/);
+  assert.match(code,/const body=String\(payload\?\.text\|\|''\)\.trim\(\)/);
+});
+
 test.todo('two-device encryption and account-chat ciphertext verification requires dedicated test accounts');
 test.todo('closed-app iOS and Android push delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
