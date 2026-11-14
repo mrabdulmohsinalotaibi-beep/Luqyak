@@ -194,21 +194,16 @@ test('repeat photo upload never overwrites R2; interrupted upload metadata can r
 test('square 1:1 crop editor is served and required for camera and photo-library uploads',async()=>{
  const response=await get('/src/square-photo-editor.js');
  assert.equal(response.status,200);
- assert.match(response.headers.get('content-type')||'',/application\\/javascript/);
+ assert.ok((response.headers.get('content-type')||'').includes('application/javascript'));
  const script=await response.text();
- assert.match(script,/export async function openSquarePhotoEditor/);
- assert.match(script,/canvas\\.width = canvas\\.height = 720/);
- assert.match(script,/touch-action:none/);
- assert.match(script,/canvas\\.toBlob|out\\.toBlob/);
- assert.match(script,/centerX-size\\/2,centerY-size\\/2,size,size/);
+ for(const phrase of ['export async function openSquarePhotoEditor','canvas.width = canvas.height = 720','touch-action:none','out.toBlob','centerX-size/2,centerY-size/2,size,size']){
+  assert.ok(script.includes(phrase),'Square editor missing: '+phrase);
+ }
  const app=await (await get('/app')).text();
- assert.match(app,/id="cameraFile"/);
- assert.match(app,/id="albumFiles"/);
- assert.match(app,/lk-camera-stage/);
- assert.match(app,/openSquarePhotoEditor\\(file\\)/);
- assert.match(app,/if\\(!blob\\)return/);
- assert.match(app,/aspect-ratio:1\\/1/);
+ for(const phrase of ['id="cameraFile"','id="albumFiles"','lk-camera-stage','openSquarePhotoEditor(file)','if(!blob)return','aspect-ratio:1/1']){
+  assert.ok(app.includes(phrase),'Application missing: '+phrase);
+ }
  const guest=await (await import('node:fs/promises')).readFile(new URL('../guest.js',import.meta.url),'utf8');
- assert.match(guest,/openSquarePhotoEditor\\(f\\)/);
- assert.match(guest,/script-src 'self' 'unsafe-inline'/);
+ assert.ok(guest.includes('openSquarePhotoEditor(f)'));
+ assert.ok(guest.includes("script-src 'self' 'unsafe-inline'"));
 });
