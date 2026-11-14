@@ -138,3 +138,16 @@ test('account chat refuses client-ID replay to a different recipient without wri
   assert.equal((await response.json()).error,'client_id_conflict');
   assert.equal(writes,0);
 });
+
+test('in-app logo uses an alpha-safe existing SVG, without a baked-in white square',async()=>{
+  const logo=await get('/brand/logo.svg');
+  assert.equal(logo.status,200);
+  assert.match(logo.headers.get('content-type')||'',/image\/svg\+xml/);
+  const svg=await logo.text();
+  assert.match(svg,/<svg\b/);
+  assert.match(svg,/<path\b/);
+  assert.doesNotMatch(svg,/<rect\b[^>]*fill=["'](?:white|#fff(?:fff)?|#F7F1E9)["']/i);
+  const app=await get('/app');
+  assert.equal(app.status,200);
+  assert.match(await app.text(),/src="\/brand\/logo\.svg"/);
+});
