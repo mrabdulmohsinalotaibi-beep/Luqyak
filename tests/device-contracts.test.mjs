@@ -14,7 +14,7 @@ test('installed mobile app has safe-area and standalone metadata',async()=>{
   const html=await page.text();
   assert.match(html,/viewport-fit=cover/);
   assert.match(html,/apple-mobile-web-app-capable/);
-  assert.match(html,/src="\/brand\/logo\.svg"/);
+  assert.match(html,/src="\/brand\/luqyak-logo-transparent\.svg\?v=20261114c"/);
   const appManifest=await manifest.json();
   assert.equal(appManifest.display,'standalone');
   assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-logo-transparent.svg')));
