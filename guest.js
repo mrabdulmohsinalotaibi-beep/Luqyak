@@ -69,7 +69,7 @@ function page(token){
  async function moderate(kind,id,action){try{await call('moderation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,id,action})});await load()}catch(e){say(e.message)}}
  q('revoke').onclick=async()=>{if(!confirm('إلغاء هذا الرابط سيمنع الضيوف من الدخول إليه. هل تريد المتابعة؟'))return;try{await call('revoke',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم إلغاء الرابط');q('ownerPanel').hidden=true}catch(e){say(e.message)}};
  q('join').onclick=async()=>{const name=q('guestName').value.trim();if(name.length<2)return say('أدخل اسمك أولًا');try{await call('join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});await load()}catch(e){say(e.message)}};
- q('upload').onclick=async()=>{const f=q('file').files[0];if(!f)return say('اختر صورة');if(f.size>2500000)return say('اختر صورة بحجم أقل من 2.5 ميجابايت');q('upload').disabled=true;try{let img=f;if(f.type!=='image/jpeg'){const bitmap=await createImageBitmap(f),canvas=document.createElement('canvas');const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);img=await new Promise(res=>canvas.toBlob(res,'image/jpeg',.78));bitmap.close()}await call('upload',{method:'POST',headers:{'content-type':'image/jpeg'},body:img});q('file').value='';await load()}catch(e){say(e.message)}finally{q('upload').disabled=false}};
+ q('upload').onclick=async()=>{const f=q('file').files[0];if(!f)return say('اختر صورة');q('upload').disabled=true;try{const {openSquarePhotoEditor}=await import('/src/square-photo-editor.js');const img=await openSquarePhotoEditor(f);if(!img){say('لم تُحفظ الصورة');return}await call('upload',{method:'POST',headers:{'content-type':'image/jpeg'},body:img});q('file').value='';await load()}catch(e){say(e.message)}finally{q('upload').disabled=false}};
  q('claim').onclick=async()=>{try{await call('claim',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم ربط المناسبة بحسابك. يمكنك الرجوع إلى ذكرياتك.')}catch(e){say('سجّل الدخول أولًا في هذا المتصفح، ثم اضغط حفظ المناسبة في حسابي.')}};
  load();
  </script></body></html>`;
@@ -81,7 +81,7 @@ export async function guestHandler(request,env){
  try{
  const link=await linkFor(env,raw);
  if(!link)return reply({error:'not_found'},404);
- if(path.startsWith('/g/'))return new Response(page(raw),{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
+ if(path.startsWith('/g/'))return new Response(page(raw),{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
  const guest=await guestFor(request,env,link);
  const actor=await viewer(request,env);
  const owner=actor?.id===link.owner_id;
