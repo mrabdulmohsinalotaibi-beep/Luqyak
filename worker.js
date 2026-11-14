@@ -766,14 +766,14 @@ if(path==='/api/social/create'&&method==='POST'){
    if(!place||!title||!['public','friends','specific','private'].includes(privacy)||!Number.isFinite(time)||time<Date.now()-86400000)return json({error:'invalid_meetup'},400);
    const names=[...new Set((Array.isArray(b.members)?b.members:[]).map(x=>String(x).trim().toLowerCase()).filter(x=>/^[a-z][a-z0-9_]{2,31}$/.test(x)))].slice(0,30);
    const people=[];
-   for(const name of names){const found=await env.DB.prepare("SELECT id FROM users WHERE username=? AND account_status='active'").bind(name).first();if(!found)return json({error:'member_not_found',username:name},400);if(found.id!==u.id)people.push(found.id)}
+   for(const name of names){const found=await env.DB.prepare("SELECT id FROM users WHERE username=? AND account_status='active'").bind(name).first();if(!found)return json({error:'member_not_found',username:name},400);if(found.id!==u.id){const blocked=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,found.id,found.id,u.id).first();if(blocked)return json({error:'member_not_available'},403);people.push(found.id)}}
    if(privacy==='private'&&people.length)return json({error:'private_cannot_invite'},400);
    if(privacy==='specific'&&!people.length)return json({error:'members_required'},400);
    const count=await env.DB.prepare("SELECT COUNT(*) n FROM lk_meetups WHERE owner_id=? AND created_at>datetime('now','-1 hour')").bind(u.id).first();if(count.n>=12)return json({error:'rate_limited'},429);
    const id=crypto.randomUUID(),note=String(b.note||'').trim().slice(0,300),lat=typeof b.lat==='number'&&Math.abs(b.lat)<=90?b.lat:null,lng=typeof b.lng==='number'&&Math.abs(b.lng)<=180?b.lng:null;
    await env.DB.prepare("INSERT INTO lk_meetups(id,owner_id,title,place,starts_at,privacy,note,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)").bind(id,u.id,title,place,new Date(time).toISOString(),privacy,note,lat,lng).run();
    for(const peer of people)await env.DB.prepare("INSERT OR IGNORE INTO lk_meetup_members(meetup_id,user_id) VALUES(?,?)").bind(id,peer).run();
-   if(ctx?.waitUntil&&people.length)ctx.waitUntil(Promise.allSettled(people.map(peer=>lkPushUser(env,peer,{title:'دعوة لقاء جديدة',body:'دُعيت إلى '+title,type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup:'+id}))));
+   if(ctx?.waitUntil&&people.length)ctx.waitUntil(Promise.allSettled(people.map(peer=>lkPushUser(env,peer,{title:'دعوة لقاء جديدة',body:'لديك دعوة للانضمام إلى لقاء',type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup:'+id}))));
    return json({ok:true,id},201);
  }
  const id=url.searchParams.get('id');
@@ -824,13 +824,15 @@ if(path==='/api/social/delete'&&method==='POST'){
  const target=await env.DB.prepare("SELECT id FROM users WHERE username=? AND account_status='active'").bind(username).first();
  if(!target)return json({error:'member_not_found',message:'لم يُعثر على هذا المستخدم'},404);
  if(target.id===u.id)return json({error:'self_invite',message:'أنت منشئ اللقاء بالفعل'},400);
+ const blocked=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,target.id,target.id,u.id).first();
+ if(blocked)return json({error:'member_not_available'},403);
  const count=await env.DB.prepare('SELECT COUNT(*) AS total FROM lk_meetup_members WHERE meetup_id=?').bind(id).first();
  if(count.total>=30)return json({error:'member_limit',message:'وصل اللقاء للحد الأقصى من المشاركين'},400);
  const previous=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(id,target.id).first();
  if(previous?.status==='accepted')return json({ok:true,existing:true,status:'accepted'});
  if(previous?.status==='pending')return json({ok:true,existing:true,status:'pending'});
  await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'pending') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='pending'").bind(id,target.id).run();
- if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,target.id,{title:'دعوة لقاء جديدة',body:'دُعيت إلى '+meetup.title,type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup:'+id}));
+ if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,target.id,{title:'دعوة لقاء جديدة',body:'لديك دعوة للانضمام إلى لقاء',type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup:'+id}));
  return json({ok:true,status:'pending'});
 }
 if(path==='/api/social/rsvp'&&method==='POST'){
@@ -886,7 +888,7 @@ if(path==='/api/social/delete-photo'&&method==='POST'){
      return json({ok:true,id:photoId,recovered:true});
    }
    try{const inserted=await env.DB.prepare('INSERT OR IGNORE INTO lk_meetup_photos(id,meetup_id,uploader_id,object_key) VALUES(?,?,?,?)').bind(photoId,id,u.id,key).run();if(!inserted.meta.changes)return json({ok:true,id:photoId,existing:true});}catch(e){const saved=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(!saved)await env.PHOTOS.delete(key);throw e}
-   if(ctx?.waitUntil)ctx.waitUntil((async()=>{const members=await env.DB.prepare("SELECT user_id FROM lk_meetup_members WHERE meetup_id=? AND status='accepted' AND user_id<>? LIMIT 8").bind(id,u.id).all();const ids=[...new Set([meetup.owner_id,...members.results.map(x=>x.user_id)])].filter(x=>x&&x!==u.id);await Promise.allSettled(ids.map(peer=>lkPushUser(env,peer,{title:'ذكرى مصورة جديدة',body:'أُضيفت صورة إلى ألبوم لقاء مشترك',type:'invites',url:'/app?tab=memories&meetup='+encodeURIComponent(id),tag:'photo:'+photoId})))})());
+   if(ctx?.waitUntil)ctx.waitUntil((async()=>{const members=await env.DB.prepare("SELECT user_id FROM lk_meetup_members WHERE meetup_id=? AND status='accepted' AND user_id<>? LIMIT 8").bind(id,u.id).all();const ids=[...new Set([meetup.owner_id,...members.results.map(x=>x.user_id)])].filter(x=>x&&x!==u.id);const eligible=await Promise.all(ids.map(async peer=>({peer,blocked:!!(await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,peer,peer,u.id).first())})));await Promise.allSettled(eligible.filter(x=>!x.blocked).map(({peer})=>lkPushUser(env,peer,{title:'ذكرى مصورة جديدة',body:'أُضيفت صورة إلى ألبوم لقاء مشترك',type:'invites',url:'/app?tab=memories&meetup='+encodeURIComponent(id),tag:'photo:'+photoId})))})());
    return json({ok:true,id:photoId},201);
  }
  
