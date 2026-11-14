@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "check": "node --check worker.js",
-    "deploy": "wrangler deploy --keep-vars"
+    "deploy": "wrangler deploy --keep-vars",
+    "test": "node --test tests/*.test.mjs",
+    "validate": "npm run check && npm test"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
