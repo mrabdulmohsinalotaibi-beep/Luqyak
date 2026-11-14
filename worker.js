@@ -654,7 +654,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
      env.DB.prepare('SELECT meetup_id,status FROM lk_meetup_members WHERE user_id=? AND meetup_id IN ('+placeholders+')').bind(u.id,...ids).all(),
      env.DB.prepare("SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END AS peer_id FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?)").bind(u.id,u.id,u.id).all(),
      env.DB.prepare('SELECT id,display_name FROM users WHERE id IN ('+ownerMarks+')').bind(...ownerIds).all(),
-     env.DB.prepare('SELECT p.meetup_id,COUNT(*) AS total,(SELECT p2.id FROM lk_meetup_photos p2 WHERE p2.meetup_id=p.meetup_id ORDER BY p2.created_at,p2.id LIMIT 1) AS cover_id FROM lk_meetup_photos p WHERE p.meetup_id IN ('+placeholders+') GROUP BY p.meetup_id').bind(...ids).all(),
+     env.DB.prepare("WITH all_photos AS (SELECT meetup_id,id,created_at FROM lk_meetup_photos UNION ALL SELECT meetup_id,id,created_at FROM lk_guest_photos WHERE status='approved') SELECT p.meetup_id,COUNT(*) AS total,(SELECT p2.id FROM all_photos p2 WHERE p2.meetup_id=p.meetup_id ORDER BY p2.created_at,p2.id LIMIT 1) AS cover_id FROM all_photos p WHERE p.meetup_id IN ("+placeholders+") GROUP BY p.meetup_id").bind(...ids).all(),
      env.DB.prepare("SELECT meetup_id,COUNT(*) AS all_count,SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) AS accepted_count FROM lk_meetup_members WHERE meetup_id IN ("+placeholders+") GROUP BY meetup_id").bind(...ids).all(),
      env.DB.prepare('SELECT blocker_id,blocked_id FROM lk_user_blocks WHERE blocker_id=? OR blocked_id=?').bind(u.id,u.id).all()
    ]);
