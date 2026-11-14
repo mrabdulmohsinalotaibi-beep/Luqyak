@@ -56,3 +56,13 @@ test('recovery requires a strong passphrase and enforces schema',async()=>{
  await assert.rejects(sealRecovery(a,'short'),/recovery_password_too_short/);
  await assert.rejects(openRecovery('{}',passphrase,accountA),/unsupported_backup_format/);
 });
+
+
+test('encrypted backup of a large local chat history is exportable and decryptable',async()=>{
+ const data=await newIdentity(accountA);
+ data.messages=[{id:'large-message',account_id:accountA,text:'رسالة'.repeat(40000)}];
+ const sealed=await sealRecovery(data,passphrase);
+ assert.doesNotMatch(sealed,/رسالة/);
+ const restored=await openRecovery(sealed,passphrase,accountA);
+ assert.equal(restored.data.messages[0].text,data.messages[0].text);
+});
