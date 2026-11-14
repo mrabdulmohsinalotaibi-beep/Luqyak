@@ -450,7 +450,7 @@ const out=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-
 const token=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/)?.[1];
 if(!token)return out({error:'login_required'},401);
 const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
-const u=await env.DB.prepare('SELECT u.id,u.username,u.email_verified_at FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(hash,new Date().toISOString()).first();
+const u=await env.DB.prepare("SELECT u.id,u.username,u.email_verified_at FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.account_status='active'").bind(hash,new Date().toISOString()).first();
 if(!u)return out({error:'login_required'},401);
 if(path==='/api/private/status'&&request.method==='GET')return out({ready:true,mode:'device-local-with-expiring-ciphertext-relay',maximum_pending_hours:24,account_id:u.id});
 if(path==='/api/private/key'&&request.method==='GET'){const row=await env.DB.prepare('SELECT public_jwk,fingerprint FROM encrypted_public_keys WHERE user_id=?').bind(u.id).first();return out({key:row?{public_jwk:JSON.parse(row.public_jwk),fingerprint:row.fingerprint}:null})}
@@ -462,7 +462,7 @@ if(path==='/api/private/lookup'&&request.method==='GET'){
   person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.id=? AND u.account_status='active' AND u.id<>? AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id)))").bind(peerId,u.id,u.id,u.id).first();
  }else{
   if(!q||!/^[a-z][a-z0-9_]{2,31}$/.test(q))return out({error:'invalid_username'},400);
-  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.username=? AND u.id<>?").bind(q,u.id).first();
+  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.username=? AND u.id<>? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id)))").bind(q,u.id,u.id,u.id).first();
  }
  return out({user:person?{id:person.id,username:person.username,display_name:person.display_name,public_jwk:JSON.parse(person.public_jwk),fingerprint:person.fingerprint}:null});
 }
@@ -477,7 +477,7 @@ const person=await env.DB.prepare("SELECT id,username,display_name FROM users WH
 return out({user:person||null});
 }
 if(request.method!=='POST')return out({error:'method_not_allowed'},405);
-const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)return out({error:'cross_site_request_rejected'},403);
+const origin=request.headers.get('origin');if(origin!==new URL(request.url).origin)return out({error:'cross_site_request_rejected'},403);
 if(!(request.headers.get('content-type')||'').toLowerCase().startsWith('application/json'))return out({error:'json_required'},415);
 if(Number(request.headers.get('content-length')||0)>110000)return out({error:'too_large'},413);
 let body;try{body=await request.json()}catch{return out({error:'invalid_json'},400)}
@@ -539,7 +539,7 @@ if(path==='/api/private/send'){
   existing.add(e.recipient_id);
   let data;try{data=JSON.parse(e.envelope)}catch{return out({error:'invalid_envelope'},400)}
   if(data.v!==1||data.algorithm!=='ECDH-P256-HKDF-AES256GCM'||typeof data.iv!=='string'||typeof data.salt!=='string'||typeof data.ciphertext!=='string'||data.ciphertext.length>10500||data.from_fingerprint!==me.fingerprint)return out({error:'invalid_ciphertext'},400);
-  const target=await env.DB.prepare('SELECT user_id FROM encrypted_public_keys WHERE user_id=?').bind(e.recipient_id).first();
+  const target=await env.DB.prepare("SELECT p.user_id FROM encrypted_public_keys p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=p.user_id) OR (f.recipient_id=? AND f.sender_id=p.user_id)))").bind(e.recipient_id,u.id,u.id).first();
   if(!target)return out({error:'recipient_key_unavailable'},409);
   const block=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,e.recipient_id,e.recipient_id,u.id).first();if(block)return out({error:'blocked_user'},403);
   pending.push({id:crypto.randomUUID(),recipient_id:e.recipient_id,envelope:e.envelope});

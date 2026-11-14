@@ -167,3 +167,32 @@ test('social UI includes consistent responsive dimensions and OS motion accessib
   assert.match(html,/prefers-reduced-motion:reduce/);
   assert.match(html,/viewport-fit=cover/);
 });
+
+test('private relay rejects inactive session and missing or foreign request origin',async()=>{
+  const token='__Host-luqyak_session='+('a'.repeat(64));
+  for(const active of [false,true]){
+    const statements=[];
+    const env={DB:{prepare(sql){statements.push(sql);return {bind(){return {async first(){if(sql.includes('FROM auth_sessions'))return active?{id:'00000000-0000-4000-8000-000000000010',username:'tester'}:null;throw Error('unexpected database read')}}}}}}};
+    const status=await worker.fetch(new Request(origin+'/api/private/status',{headers:{cookie:token}}),env,ctx);
+    assert.equal(status.status,active?200:401);
+    assert.ok(statements.some(sql=>sql.includes("u.account_status='active'")));
+    if(!active)continue;
+    for(const extra of [{},{origin:'https://attacker.example'}]){
+      const res=await worker.fetch(new Request(origin+'/api/private/friends/request',{method:'POST',headers:{cookie:token,'content-type':'application/json',...extra},body:JSON.stringify({username:'some_friend'})}),env,ctx);
+      assert.equal(res.status,403);
+      assert.equal((await res.json()).error,'cross_site_request_rejected');
+    }
+  }
+});
+test('private key lookup requires an accepted active friendship',async()=>{
+  const queries=[];
+  const env={DB:{prepare(sql){queries.push(sql);return {bind(){return {async first(){if(sql.includes('FROM auth_sessions'))return {id:'00000000-0000-4000-8000-000000000010',username:'tester'};if(sql.includes('FROM users u JOIN encrypted_public_keys'))return null;throw Error('unexpected DB read')}}}}}}};
+  const res=await worker.fetch(new Request(origin+'/api/private/lookup?username=some_friend',{headers:{cookie:'__Host-luqyak_session='+('a'.repeat(64))}}),env,ctx);
+  assert.equal(res.status,200);
+  assert.equal((await res.json()).user,null);
+  assert.ok(queries.some(sql=>sql.includes("f.status='accepted'")&&sql.includes("u.account_status='active'")));
+});
+test('encrypted recipient selection requires accepted friend relationship',async()=>{
+  const source=(await import('node:fs')).readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+  assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
+});
