@@ -450,7 +450,7 @@ const out=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-
 const token=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/)?.[1];
 if(!token)return out({error:'login_required'},401);
 const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
-const u=await env.DB.prepare('SELECT u.id,u.username,u.email_verified_at FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.account_status='active'').bind(hash,new Date().toISOString()).first();
+const u=await env.DB.prepare("SELECT u.id,u.username,u.email_verified_at FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.account_status='active'").bind(hash,new Date().toISOString()).first();
 if(!u)return out({error:'login_required'},401);
 if(path==='/api/private/status'&&request.method==='GET')return out({ready:true,mode:'device-local-with-expiring-ciphertext-relay',maximum_pending_hours:24,account_id:u.id});
 if(path==='/api/private/key'&&request.method==='GET'){const row=await env.DB.prepare('SELECT public_jwk,fingerprint FROM encrypted_public_keys WHERE user_id=?').bind(u.id).first();return out({key:row?{public_jwk:JSON.parse(row.public_jwk),fingerprint:row.fingerprint}:null})}
