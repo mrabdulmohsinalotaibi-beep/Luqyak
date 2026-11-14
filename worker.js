@@ -698,13 +698,14 @@ if((path==='/api/social/email/request'||path==='/api/social/email/verify')&&meth
  if(!/^\d{6}$/.test(code))return json({error:'invalid_code',message:'الرمز غير صحيح'},400);
  const record=await env.DB.prepare('SELECT code_hash,salt,expires_at,attempts FROM email_otps WHERE email=?').bind(otpKey).first();
  if(!record||Number(record.expires_at)<now||Number(record.attempts)>=5)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
- await env.DB.prepare('UPDATE email_otps SET attempts=attempts+1 WHERE email=? AND attempts<5').bind(otpKey).run();
+ const attempt=await env.DB.prepare('UPDATE email_otps SET attempts=attempts+1 WHERE email=? AND code_hash=? AND attempts<5 AND expires_at>=?').bind(otpKey,record.code_hash,now).run();
+ if(Number(attempt.meta?.changes)!==1)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
  if(await hashOtp(record.salt+':'+code)!==record.code_hash)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
+ const consumed=await env.DB.prepare('DELETE FROM email_otps WHERE email=? AND code_hash=? AND attempts<=5 AND expires_at>=?').bind(otpKey,record.code_hash,now).run();
+ if(Number(consumed.meta?.changes)!==1)return json({error:'invalid_code',message:'هذا الرمز استُخدم أو انتهت صلاحيته'},401);
  try{
-  await env.DB.batch([
-   env.DB.prepare('UPDATE users SET email=?,email_verified_at=? WHERE id=? AND email=?').bind(email,new Date().toISOString(),u.id,current.email),
-   env.DB.prepare('DELETE FROM email_otps WHERE email=? AND code_hash=?').bind(otpKey,record.code_hash)
-  ]);
+  const changed=await env.DB.prepare('UPDATE users SET email=?,email_verified_at=? WHERE id=? AND email=?').bind(email,new Date().toISOString(),u.id,current.email).run();
+  if(Number(changed.meta?.changes)!==1)return json({error:'profile_changed',message:'تغير الحساب أثناء التحقق، أعد المحاولة'},409);
  }catch(e){
   if(/unique|constraint/i.test(String(e)))return json({error:'email_unavailable',message:'تعذر استخدام هذا البريد'},409);
   throw e;
