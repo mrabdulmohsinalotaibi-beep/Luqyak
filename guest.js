@@ -90,6 +90,7 @@ export async function guestHandler(request,env){
   if(status==='accepted'&&actor)await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,actor.id).run();
   return reply({ok:true,status},201,{'set-cookie':'__Host-luqyak_guest_'+link.token_hash.slice(0,16)+'='+session+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'});
  }
+ if(apiPath==='interact'&&allowed){const pid=url.searchParams.get('photo');const row=await env.DB.prepare("SELECT id FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved'").bind(pid,link.meetup_id).first();if(!row)return reply({error:'not_found'},404);return guestPhotoInteraction(request,env,pid,owner?'user':'guest',owner?actor.id:guest.id)}
  if(apiPath==='photo'&&method==='GET'){
   if(!allowed)return reply({error:'not_found'},404);
   const id=url.searchParams.get('photo');if(!/^[a-f0-9-]{36}$/.test(id||''))return reply({error:'not_found'},404);
@@ -150,4 +151,38 @@ export async function guestOwnerHandler(request,env){
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0).run();
  return reply({ok:true,url:url.origin+'/g/'+token});
+}
+
+
+export async function guestPhotoInteraction(request,env,photoId,actorType,actorId){
+ const url=new URL(request.url),method=request.method;
+ const valid=/^[a-f0-9-]{36}$/.test(photoId||'');
+ if(!valid||!['user','guest'].includes(actorType)||!actorId)return reply({error:'not_found'},404);
+ if(method==='GET'){
+  const [likes,comments]=await Promise.all([
+   env.DB.prepare('SELECT actor_type,actor_id FROM lk_guest_photo_reactions WHERE photo_id=? LIMIT 1000').bind(photoId).all(),
+   env.DB.prepare("SELECT c.id,c.body,c.created_at,COALESCE(u.display_name,g.display_name,'مشارك') AS display_name FROM lk_guest_photo_comments c LEFT JOIN users u ON c.actor_type='user' AND u.id=c.actor_id LEFT JOIN lk_guest_members g ON c.actor_type='guest' AND g.id=c.actor_id WHERE c.photo_id=? ORDER BY c.created_at DESC LIMIT 100").bind(photoId).all()
+  ]);
+  return reply({likes:likes.results.length,liked:likes.results.some(x=>x.actor_type===actorType&&x.actor_id===actorId),comments:comments.results});
+ }
+ if(method!=='POST')return reply({error:'method_not_allowed'},405);
+ if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
+ if(!(request.headers.get('content-type')||'').startsWith('application/json'))return reply({error:'json_required'},415);
+ if(Number(request.headers.get('content-length')||0)>1200)return reply({error:'too_large'},413);
+ let b;try{b=await request.json()}catch{return reply({error:'invalid_body'},400)}
+ if(b.action==='like'){
+  const old=await env.DB.prepare('SELECT 1 x FROM lk_guest_photo_reactions WHERE photo_id=? AND actor_type=? AND actor_id=?').bind(photoId,actorType,actorId).first();
+  if(old)await env.DB.prepare('DELETE FROM lk_guest_photo_reactions WHERE photo_id=? AND actor_type=? AND actor_id=?').bind(photoId,actorType,actorId).run();
+  else await env.DB.prepare('INSERT INTO lk_guest_photo_reactions(photo_id,actor_type,actor_id) VALUES(?,?,?)').bind(photoId,actorType,actorId).run();
+  return reply({ok:true,liked:!old});
+ }
+ if(b.action==='comment'){
+  const value=String(b.text||'').trim();
+  if(!value||value.length>350)return reply({error:'invalid_comment'},400);
+  const count=await env.DB.prepare("SELECT COUNT(*) n FROM lk_guest_photo_comments WHERE actor_type=? AND actor_id=? AND created_at>datetime('now','-1 minute')").bind(actorType,actorId).first();
+  if(count.n>=10)return reply({error:'rate_limited'},429);
+  await env.DB.prepare('INSERT INTO lk_guest_photo_comments(id,photo_id,actor_type,actor_id,body) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),photoId,actorType,actorId,value).run();
+  return reply({ok:true});
+ }
+ return reply({error:'invalid_action'},400);
 }
