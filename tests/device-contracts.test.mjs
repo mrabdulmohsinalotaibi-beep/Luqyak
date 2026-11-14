@@ -17,7 +17,7 @@ test('installed mobile app has safe-area and standalone metadata',async()=>{
   assert.match(html,/src="\/brand\/logo\.svg"/);
   const appManifest=await manifest.json();
   assert.equal(appManifest.display,'standalone');
-  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-user-upload-20261114.png')));
+  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-logo-transparent.svg')));
 });
 
 test('meetup creation is a three-step wizard and accepts privacy choice',async()=>{
