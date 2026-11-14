@@ -189,3 +189,26 @@ test('repeat photo upload never overwrites R2; interrupted upload metadata can r
  assert.equal(puts,1);
  assert.equal(inserted,1);
 });
+
+
+test('square 1:1 crop editor is served and required for camera and photo-library uploads',async()=>{
+ const response=await get('/src/square-photo-editor.js');
+ assert.equal(response.status,200);
+ assert.match(response.headers.get('content-type')||'',/application\\/javascript/);
+ const script=await response.text();
+ assert.match(script,/export async function openSquarePhotoEditor/);
+ assert.match(script,/canvas\\.width = canvas\\.height = 720/);
+ assert.match(script,/touch-action:none/);
+ assert.match(script,/canvas\\.toBlob|out\\.toBlob/);
+ assert.match(script,/centerX-size\\/2,centerY-size\\/2,size,size/);
+ const app=await (await get('/app')).text();
+ assert.match(app,/id="cameraFile"/);
+ assert.match(app,/id="albumFiles"/);
+ assert.match(app,/lk-camera-stage/);
+ assert.match(app,/openSquarePhotoEditor\\(file\\)/);
+ assert.match(app,/if\\(!blob\\)return/);
+ assert.match(app,/aspect-ratio:1\\/1/);
+ const guest=await (await import('node:fs/promises')).readFile(new URL('../guest.js',import.meta.url),'utf8');
+ assert.match(guest,/openSquarePhotoEditor\\(f\\)/);
+ assert.match(guest,/script-src 'self' 'unsafe-inline'/);
+});
