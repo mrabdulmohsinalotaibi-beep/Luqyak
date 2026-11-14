@@ -81,7 +81,9 @@ test('account chat explicitly discloses that server-backed messages are not end-
   const response=await get('/account-chat');
   assert.equal(response.status,200);
   const html=await response.text();
-  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);\n  assert.match(html,/id=\\\"encryptedChatLink\\\"/);\n  assert.doesNotMatch(html,/id=\\\"sendForm\\\"/);
+  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);
+  assert.match(html,/encryptedChatLink/);
+  assert.doesNotMatch(html,/id="sendForm"/);
   assert.match(html,/href="\/private"/);
   assert.match(response.headers.get('cache-control')||'',/no-store/);
 });
