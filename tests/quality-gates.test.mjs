@@ -82,6 +82,8 @@ test('account chat explicitly discloses that server-backed messages are not end-
   assert.equal(response.status,200);
   const html=await response.text();
   assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);
+  assert.match(html,/encryptedChatLink/);
+  assert.doesNotMatch(html,/id="sendForm"/);
   assert.match(html,/href="\/private"/);
   assert.match(response.headers.get('cache-control')||'',/no-store/);
 });
@@ -94,19 +96,19 @@ test('private image responses require authorized viewing and are not publicly ca
   assert.match(code,/member\?\.status==='accepted'/);
 });
 
-test('account chat rate-limits and deduplicates sends, but is NOT cryptographically authenticated E2EE',async()=>{
+test('legacy account chat refuses plaintext sends and preserves private history route',async()=>{
   const code=await (await import('node:fs/promises')).readFile(new URL('../worker.js',import.meta.url),'utf8');
-  assert.match(code,/INSERT OR IGNORE INTO lk_account_messages/);
-  assert.match(code,/client_id/);
-  assert.match(code,/rate_limited/);
-  assert.match(code,/const body=String\(payload\?\.text\|\|''\)\.trim\(\)/);
+  assert.match(code,/encrypted_chat_required/);
+  assert.doesNotMatch(code,/INSERT OR IGNORE INTO lk_account_messages/);
+  assert.doesNotMatch(code,/const body=String\(payload\?\.text\|\|''\)\.trim\(\)/);
+  assert.match(code,/SELECT id,sender_id,recipient_id,body,created_at,read_at FROM lk_account_messages/);
 });
 
 test.todo('two-device encryption and account-chat ciphertext verification requires dedicated test accounts');
 test.todo('closed-app iOS and Android push delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
 
-test('account chat refuses client-ID replay to a different recipient without writes',async()=>{
+test('legacy account chat refuses new plaintext sends without writes',async()=>{
   const actor='00000000-0000-4000-8000-000000000010';
   const peer='00000000-0000-4000-8000-000000000011';
   const other='00000000-0000-4000-8000-000000000012';
@@ -135,7 +137,7 @@ test('account chat refuses client-ID replay to a different recipient without wri
     body:JSON.stringify({text:'hello',client_id:clientId})
   }),env,ctx);
   assert.equal(response.status,409);
-  assert.equal((await response.json()).error,'client_id_conflict');
+  assert.equal((await response.json()).error,'encrypted_chat_required');
   assert.equal(writes,0);
 });
 
