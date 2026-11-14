@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS lk_guest_photo_reactions (photo_id TEXT NOT NULL REFERENCES lk_guest_photos(id) ON DELETE CASCADE, actor_type TEXT NOT NULL CHECK(actor_type IN ('user','guest')), actor_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(photo_id,actor_type,actor_id));
+CREATE TABLE IF NOT EXISTS lk_guest_photo_comments (id TEXT PRIMARY KEY, photo_id TEXT NOT NULL REFERENCES lk_guest_photos(id) ON DELETE CASCADE, actor_type TEXT NOT NULL CHECK(actor_type IN ('user','guest')), actor_id TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_lk_guest_photo_comments ON lk_guest_photo_comments(photo_id,created_at);
