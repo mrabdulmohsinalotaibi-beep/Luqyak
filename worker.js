@@ -643,8 +643,20 @@ if(path==='/api/social/profile'&&method==='POST'){
  let data;try{data=await body()}catch{return json({error:'invalid_body'},400)}
  const name=String(data.display_name||'').trim().replace(/\s+/g,' ');
  if(name.length<2||name.length>60||/[<>\u0000-\u001f]/.test(name))return json({error:'invalid_name',message:'الاسم يجب أن يتكون من 2 إلى 60 حرفًا'},400);
- await env.DB.prepare('UPDATE users SET display_name=? WHERE id=?').bind(name,u.id).run();
- return json({ok:true,display_name:name});
+ const requested=typeof data.username==='string'?data.username.trim().toLowerCase():null;
+ if(requested!==null && !/^[a-z0-9_]{3,32}$/.test(requested))return json({error:'invalid_username',message:'اسم المستخدم من 3 إلى 32 حرفًا إنجليزيًا أو رقمًا أو شرطة سفلية'},400);
+ if(requested!==null){
+  const existing=await env.DB.prepare('SELECT id FROM users WHERE lower(username)=? AND id<>? LIMIT 1').bind(requested,u.id).first();
+  if(existing)return json({error:'username_taken',message:'اسم المستخدم مستخدم بالفعل'},409);
+ }
+ try{
+  if(requested!==null)await env.DB.prepare('UPDATE users SET display_name=?,username=? WHERE id=?').bind(name,requested,u.id).run();
+  else await env.DB.prepare('UPDATE users SET display_name=? WHERE id=?').bind(name,u.id).run();
+ }catch(e){
+  if(/unique|constraint/i.test(String(e)))return json({error:'username_taken',message:'اسم المستخدم مستخدم بالفعل'},409);
+  throw e;
+ }
+ return json({ok:true,display_name:name,...(requested!==null?{username:requested}:{})});
 }
 if(path==='/api/social/avatar'&&method==='GET'){
  const person=await env.DB.prepare('SELECT avatar_key FROM users WHERE id=?').bind(u.id).first();
