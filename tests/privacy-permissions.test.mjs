@@ -16,7 +16,7 @@ test('private inbox only returns messages from current, unblocked accepted frien
     async run(){if(sql.includes('DELETE FROM encrypted_delivery_queue WHERE expires_at'))return {meta:{changes:0}};throw Error('Unexpected write: '+sql)},
     async all(){if(sql.includes('FROM encrypted_delivery_queue q'))return {results:[]};throw Error('Unexpected list: '+sql)}
   }}}}}};
-  const res=await worker.fetch(new Request(origin+'/api/private/inbox',{headers}),env,ctx);
+  const res=await worker.fetch(new Request(origin+'/api/private/inbox',{method:'POST',headers:{...headers,origin,'content-type':'application/json'},body:'{}'}),env,ctx);
   assert.equal(res.status,200);
   assert.deepEqual((await res.json()).messages,[]);
   const inboxSql=sqls.find(q=>q.includes('FROM encrypted_delivery_queue q'));
