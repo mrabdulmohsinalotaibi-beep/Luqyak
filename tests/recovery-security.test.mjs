@@ -66,3 +66,13 @@ test('encrypted backup of a large local chat history is exportable and decryptab
  const restored=await openRecovery(sealed,passphrase,accountA);
  assert.equal(restored.data.messages[0].text,data.messages[0].text);
 });
+
+
+test('restore writes key, rooms, and messages atomically with a recoverable old-key checkpoint',async()=>{
+ const response=await worker.fetch(new Request('https://luqyak.athat.app/private'),{},{waitUntil(){}});
+ const html=await response.text();
+ assert.match(html,/db\.transaction\(\['settings','messages'\],'readwrite'\)/);
+ assert.match(html,/restore-checkpoint:/);
+ assert.match(html,/keypair:oldPair/);
+ assert.match(html,/existingIds\.has\(message\.id\)/);
+});
