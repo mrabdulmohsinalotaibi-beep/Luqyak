@@ -51,3 +51,15 @@ test('Verified email change requires origin, OTP and updates email only after pr
   }
   assert.ok(worker.includes('/api/social/email/verify'));
 });
+
+test('Embedded account photo and email handlers parse as JavaScript', () => {
+  const decode = source => source.replace(/\\\\n/g, '\n').replace(/\\\\"/g, '"');
+  const avatarStart = worker.indexOf("const picker=document.createElement('input')");
+  const avatarEnd = worker.indexOf('const section=cover.nextElementSibling', avatarStart);
+  assert.ok(avatarStart > 0 && avatarEnd > avatarStart);
+  assert.doesNotThrow(() => new Function(decode(worker.slice(avatarStart, avatarEnd))));
+  const emailStart = worker.indexOf("const emailBox=document");
+  const emailEnd = worker.indexOf(" };\\n }\\n}\\nfunction lkOwnerActions", emailStart);
+  assert.ok(emailStart > 0 && emailEnd > emailStart);
+  assert.doesNotThrow(() => new Function(decode(worker.slice(emailStart, emailEnd + 3))));
+});
