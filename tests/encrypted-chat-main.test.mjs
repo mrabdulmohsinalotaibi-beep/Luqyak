@@ -28,11 +28,12 @@ test('two simulated accounts exchange authenticated ciphertext, never plaintext'
  const corrupted=ciphertext.slice();corrupted[0]^=1;
  await assert.rejects(crypto.subtle.decrypt({name:'AES-GCM',iv},recipientKey,corrupted));
 });
-test('main social chat tab launches encrypted client by default and labels legacy access',async()=>{
+test('social app provides a private friends circle without chat controls',async()=>{
  const response=await worker.fetch(new Request('https://luqyak.athat.app/app'),{},{waitUntil(){}});
  assert.equal(response.status,200);
  const html=await response.text();
- assert.match(html,/href="\/private" class="primary"/);
- assert.match(html,/قراءة الرسائل القديمة غير المشفّرة/);
- assert.match(html,/المفتاح والرسائل المقروءة محفوظان محليًا/);
+ assert.match(html,/دائرة أصدقائي/);
+ assert.match(html,/دائرتي<\/button>/);
+ assert.match(html,/lkAddFriendForm/);
+ assert.doesNotMatch(html,/فتح المحادثات المشفّرة<\/a>/);
 });
