@@ -51,6 +51,6 @@ test('ordinary chat shows in-conversation disclosure and link to encrypted conve
  const res=await worker.fetch(new Request(base+'/account-chat'),{},context);
  assert.equal(res.status,200);
  const html=await res.text();
- assert.match(html,/هذه المحادثة محفوظة على الخادم وليست مشفّرة من الطرف إلى الطرف/);
+ assert.match(html,/هذه الرسائل القديمة محفوظة على الخادم وليست مشفّرة من الطرف إلى الطرف/);
  assert.match(html,/href="\/private"[^>]*>الانتقال إلى المحادثات الخاصة المشفّرة/);
 });
