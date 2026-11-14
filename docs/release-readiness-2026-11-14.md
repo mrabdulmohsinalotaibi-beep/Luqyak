@@ -19,7 +19,7 @@
 | iOS | PWA manifest, standalone mode and install guidance | Signed native Xcode project, TestFlight build and App Store submission |
 
 ## Blocking security questions before a public security claim
-1. The `/api/chat/messages` path reads message `body` values from `lk_account_messages` in D1. Confirm whether bodies are ciphertext or plaintext, and whether the account-chat client encrypts **before** sending. Do **not** state that every chat is end-to-end encrypted until this is proved.
+1. **Confirmed blocker:** the ordinary account-chat browser code sends `{text,client_id}` directly to `/api/chat/send`; the server stores `payload.text` in `lk_account_messages.body` and returns it unchanged to authenticated friends. This path is **not end-to-end encrypted**. The separate `/api/private/*` cryptographic path does not make the ordinary chat secure. Do not make a blanket E2E privacy claim or roll out a breaking ciphertext conversion without a compatibility/migration and recovery plan.
 2. The separate `/api/private/*` paths contain cryptographic handling; they require an independent multi-device key continuity review.
 3. Test unauthorized photo requests, member removal, invitation decline, account logout, and account deletion with dedicated test users.
 4. Define and publish a backup/recovery contract. Local-only encryption and effortless device recovery cannot both be promised without a key-recovery design.
@@ -49,3 +49,8 @@ Use *two dedicated consenting test accounts* and two devices, one iPhone (instal
 
 ## Release rule
 **Do not declare fully tested, secure, or App Store-ready** until the above two-account/device matrix and the cryptography/security checks are complete. Minor UI updates can deploy independently once automated checks pass.
+
+## Follow-up audit — 2026-11-14
+- Added a guard against reuse of an account-chat `client_id` for a different recipient or body. It returns HTTP 409 (`client_id_conflict`) rather than acknowledging another message. No schema migration or stored-message rewrite.
+- Added an isolated regression test with a fake D1 adapter; no production database writes.
+- GitHub Actions/check status and two physical-device acceptance tests must be verified separately before deployment or announcing release readiness.
