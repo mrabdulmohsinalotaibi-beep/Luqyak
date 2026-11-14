@@ -18,14 +18,14 @@ test('installed mobile app has safe-area and standalone metadata',async()=>{
   assert.match(html,/src="\/brand\/luqyak-logo-transparent\.svg\?v=20261114c"/);
   const appManifest=await manifest.json();
   assert.equal(appManifest.display,'standalone');
-  assert.match(html,/rel="apple-touch-icon"[^>]+luqyak-user-upload-20261114\.png/);
-  const icon=await worker.fetch(new Request(origin+'/brand/luqyak-user-upload-20261114.png'),{},ctx);
+  assert.match(html,/rel="apple-touch-icon"[^>]+luqyak-home-white-20261114\.png/);
+  const icon=await worker.fetch(new Request(origin+'/brand/luqyak-home-white-20261114.png'),{},ctx);
   assert.equal(icon.headers.get('content-type'),'image/png');
   const iconBytes=new Uint8Array(await icon.arrayBuffer());
   assert.equal(iconBytes[25],3); // indexed PNG
   const imageChunks=new TextDecoder('latin1').decode(iconBytes);
   assert.equal(imageChunks.includes('tRNS'),false); // opaque icon; iOS will not fill transparency with black
-  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-user-upload-20261114.png') && icon.type==='image/png' && icon.sizes==='192x192'));
+  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-home-white-20261114.png') && icon.type==='image/png' && icon.sizes==='180x180'));
 });
 
 test('meetup creation is a three-step wizard and accepts privacy choice',async()=>{
