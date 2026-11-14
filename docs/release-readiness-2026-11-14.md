@@ -47,5 +47,14 @@ Use *two dedicated consenting test accounts* and two devices, one iPhone (instal
 - Verify current Xcode/SDK submission requirements immediately before upload.
 - Do not submit placeholder screenshots or claim tests have passed without device evidence.
 
+## Verified follow-up (source and mock Worker checks, 2026-11-14)
+- The existing account-chat endpoint `/api/chat/send` accepts a plaintext `text` value and inserts its `body` into `lk_account_messages` in D1. This is **not end-to-end encryption**. The account-chat UI now discloses this limitation and points to the separate private chat. Existing message data was not modified. A proper migration requires a reviewed key-management and multi-device recovery design.
+- The main `/app` HTML response now sends `Cache-Control: no-store`, consistent with its privacy regression test.
+- A JavaScript/V8 mock invocation of the Worker successfully compiled its source and returned HTTP 200 for `/manifest.webmanifest`, `/luqyak-sw.js`, `/app`, and `/account-chat`.
+- Seven unauthenticated GET/POST requests to image, profile, public-account-chat and private-chat API routes returned HTTP 401 with `no-store` cache directives under mock execution, without DB/R2 access or writes.
+- The new tests include explicit assertions for the plaintext-chat disclosure, private image permission checks, send deduplication and per-minute rate limit. These are regression tests, **not** a full cryptographic audit.
+- GitHub Actions test-run results have not yet been independently confirmed. Mock-worker checks are not a substitute for `npm run validate` under Node or for integration tests.
+- No physical iPhone or Android tests, account registrations, media uploads, D1 mutations, message deliveries, or restored-device checks were performed.
+
 ## Release rule
 **Do not declare fully tested, secure, or App Store-ready** until the above two-account/device matrix and the cryptography/security checks are complete. Minor UI updates can deploy independently once automated checks pass.
