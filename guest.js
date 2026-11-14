@@ -21,11 +21,39 @@ async function guestFor(request,env,link){
  return actor?env.DB.prepare("SELECT * FROM lk_guest_members WHERE token_hash=? AND claimed_user_id=? ORDER BY created_at DESC LIMIT 1").bind(link.token_hash,actor.id).first():null;
 }
 function page(token){
- return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>مشاركة مناسبة | لُقياك</title><style>*{box-sizing:border-box}body{font:17px system-ui,Tahoma;background:#f7f0e8;color:#392c27;margin:0;padding:20px}main{max-width:550px;margin:auto}header{font-size:26px;color:#853e36;font-weight:800}article{background:#fff;padding:22px;border-radius:22px;margin-top:16px;box-shadow:0 3px 15px #402b2412}button,input{font:inherit;padding:14px;border-radius:12px;border:1px solid #dccbc2;width:100%;margin:8px 0}button{background:#853e36;color:white;cursor:pointer}button.secondary{background:#f4e7dd;color:#753e35}button:disabled{opacity:.55}p{line-height:1.7}img{max-width:100%;border-radius:12px}#gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.muted{color:#78675d}#status{padding:10px;white-space:pre-wrap}</style></head><body><main><header>لُقياك</header><p>اجتمعنا، صوّرنا، وحفظنا الذكرى.</p><article><h1 id="name">مناسبة مشتركة</h1><p id="details"></p><div id="entry"><p>شارك بدون حساب، أو سجل الدخول لحفظ مناسباتك.</p><input id="guestName" maxlength="60" placeholder="اسمك في المناسبة" autocomplete="name"><button id="join">الدخول كضيف</button><a href="/?login=1" id="signin">الدخول أو إنشاء حساب</a></div><div id="album" hidden><h2>ألبوم المناسبة</h2><p class="muted">الصور لا تظهر إلا للمشاركين المصرح لهم.</p><input type="file" accept="image/jpeg,image/png,image/heic,image/webp" id="file"><button id="upload">إضافة صورة</button><div id="gallery"></div><button id="claim" class="secondary">حفظ المناسبة في حسابي</button></div><p id="status" role="status"></p></article></main><script>
+ return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>مشاركة مناسبة | لُقياك</title><style>*{box-sizing:border-box}body{font:17px system-ui,Tahoma;background:#f7f0e8;color:#392c27;margin:0;padding:20px}main{max-width:550px;margin:auto}header{font-size:26px;color:#853e36;font-weight:800}article{background:#fff;padding:22px;border-radius:22px;margin-top:16px;box-shadow:0 3px 15px #402b2412}button,input{font:inherit;padding:14px;border-radius:12px;border:1px solid #dccbc2;width:100%;margin:8px 0}button{background:#853e36;color:white;cursor:pointer}button.secondary{background:#f4e7dd;color:#753e35}button:disabled{opacity:.55}p{line-height:1.7}img{max-width:100%;border-radius:12px}#gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.muted{color:#78675d}#status{padding:10px;white-space:pre-wrap}</style></head><body><main><header>لُقياك</header><p>اجتمعنا، صوّرنا، وحفظنا الذكرى.</p><article><h1 id="name">مناسبة مشتركة</h1><p id="details"></p><div id="entry"><p>شارك بدون حساب، أو سجل الدخول لحفظ مناسباتك.</p><input id="guestName" maxlength="60" placeholder="اسمك في المناسبة" autocomplete="name"><button id="join">الدخول كضيف</button><a href="/?login=1" id="signin">الدخول أو إنشاء حساب</a></div><div id="album" hidden><h2>ألبوم المناسبة</h2><p class="muted">الصور لا تظهر إلا للمشاركين المصرح لهم.</p><input type="file" accept="image/jpeg,image/png,image/heic,image/webp" id="file"><button id="upload">إضافة صورة</button><div id="gallery"></div><button id="claim" class="secondary">حفظ المناسبة في حسابي</button></div><section id="ownerPanel" hidden><h2>إدارة المشاركات</h2><p class="muted">وافق على المشاركين والصور قبل ظهورها للآخرين.</p><div id="pendingGuests"></div><div id="pendingPhotos"></div><button id="revoke" class="secondary">إلغاء هذا الرابط</button></section><p id="status" role="status"></p></article></main><script>
  const token=${JSON.stringify(token)};const q=id=>document.getElementById(id);
  async function call(path,options={}){const r=await fetch('/api/guest/'+path+'?token='+encodeURIComponent(token),{credentials:'same-origin',cache:'no-store',...options});const v=await r.json();if(!r.ok)throw Error(v.message||v.error||'تعذر إكمال العملية');return v}
  const say=m=>q('status').textContent=m;
- async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const image=document.createElement('img');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);q('gallery').append(image)}}catch(e){say(e.message)}}
+ async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('ownerPanel').hidden=!v.owner;if(v.owner)await loadModeration();q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const image=document.createElement('img');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);q('gallery').append(image)}}catch(e){say(e.message)}}
+ async function loadModeration(){
+  try{
+   const data=await call('moderation');
+   const guests=q('pendingGuests');guests.replaceChildren();
+   const members=data.members.filter(x=>x.status==='pending');
+   if(members.length){const h=document.createElement('h3');h.textContent='طلبات المشاركة ('+members.length+')';guests.append(h)}
+   for(const g of members){
+    const box=document.createElement('div');box.textContent=g.display_name+' ';
+    for(const [action,label] of [['approve','قبول'],['reject','رفض']]){
+     const b=document.createElement('button');b.textContent=label;b.className=action==='reject'?'secondary':'';b.onclick=()=>moderate('guest',g.id,action);box.append(b)
+    }
+    guests.append(box);
+   }
+   const panel=q('pendingPhotos');panel.replaceChildren();const pending=data.photos.filter(x=>x.status==='pending');
+   if(pending.length){const h=document.createElement('h3');h.textContent='صور تنتظر المراجعة ('+pending.length+')';panel.append(h)}
+   for(const p of pending){
+    const box=document.createElement('div'),im=document.createElement('img');
+    im.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);im.alt='صورة قيد المراجعة';im.loading='lazy';box.append(im);
+    const txt=document.createElement('p');txt.textContent=p.display_name;box.append(txt);
+    for(const [action,label] of [['approve','اعتماد الصورة'],['reject','رفض الصورة']]){
+     const b=document.createElement('button');b.textContent=label;b.className=action==='reject'?'secondary':'';b.onclick=()=>moderate('photo',p.id,action);box.append(b)
+    }
+    panel.append(box)
+   }
+  }catch(e){say(e.message)}
+ }
+ async function moderate(kind,id,action){try{await call('moderation',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,id,action})});await load()}catch(e){say(e.message)}}
+ q('revoke').onclick=async()=>{if(!confirm('إلغاء هذا الرابط سيمنع الضيوف من الدخول إليه. هل تريد المتابعة؟'))return;try{await call('revoke',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم إلغاء الرابط');q('ownerPanel').hidden=true}catch(e){say(e.message)}};
  q('join').onclick=async()=>{const name=q('guestName').value.trim();if(name.length<2)return say('أدخل اسمك أولًا');try{await call('join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});await load()}catch(e){say(e.message)}};
  q('upload').onclick=async()=>{const f=q('file').files[0];if(!f)return say('اختر صورة');if(f.size>2500000)return say('اختر صورة بحجم أقل من 2.5 ميجابايت');q('upload').disabled=true;try{let img=f;if(f.type!=='image/jpeg'){const bitmap=await createImageBitmap(f),canvas=document.createElement('canvas');const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);img=await new Promise(res=>canvas.toBlob(res,'image/jpeg',.78));bitmap.close()}await call('upload',{method:'POST',headers:{'content-type':'image/jpeg'},body:img});q('file').value='';await load()}catch(e){say(e.message)}finally{q('upload').disabled=false}};
  q('claim').onclick=async()=>{try{await call('claim',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم ربط المناسبة بحسابك. يمكنك الرجوع إلى ذكرياتك.')}catch(e){say('سجّل الدخول أولًا في هذا المتصفح، ثم اضغط حفظ المناسبة في حسابي.')}};
@@ -89,6 +117,7 @@ export async function guestHandler(request,env){
   if(guest.status==='accepted')await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,actor.id).run();
   return reply({ok:true});
  }
+ if(apiPath==='revoke'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND owner_id=?').bind(link.token_hash,actor.id).run();return reply({ok:true})}
  if(apiPath==='moderation'&&owner){
   if(method==='GET'){
    const members=(await env.DB.prepare("SELECT id,display_name,status FROM lk_guest_members WHERE token_hash=? ORDER BY created_at DESC LIMIT 200").bind(link.token_hash).all()).results;
@@ -117,8 +146,8 @@ export async function guestOwnerHandler(request,env){
  const mode=String(b.mode||'link');
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
  const token=random();
- const old=await env.DB.prepare('SELECT token_hash FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).all();
- for(const v of old.results)await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=?').bind(v.token_hash).run();
+ const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).first();
+ if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0).run();
  return reply({ok:true,url:url.origin+'/g/'+token});
 }
