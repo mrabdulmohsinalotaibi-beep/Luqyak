@@ -658,6 +658,59 @@ if(path==='/api/social/profile'&&method==='POST'){
  }
  return json({ok:true,display_name:name,...(requested!==null?{username:requested}:{})});
 }
+
+/* Changing email never changes the account before proof of control of the new address. */
+if((path==='/api/social/email/request'||path==='/api/social/email/verify')&&method==='POST'){
+ if(!csrf())return json({error:'invalid_origin'},403);
+ let data;try{data=await body()}catch{return json({error:'invalid_body'},400)}
+ const email=String(data?.email||'').trim().toLowerCase();
+ if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return json({error:'invalid_email',message:'أدخل بريدًا إلكترونيًا صحيحًا'},400);
+ const current=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(u.id).first();
+ if(!current)return json({error:'login_required'},401);
+ if(current.email?.toLowerCase()===email)return json({error:'same_email',message:'هذا بريدك الحالي'},400);
+ const otpKey='profile-change:'+u.id+':'+email,now=Date.now();
+ const hashOtp=async v=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+ if(path==='/api/social/email/request'){
+  const provider=Boolean(env.RESEND_API_KEY&&env.AUTH_FROM_EMAIL);
+  if(!provider && !(env.VERIFY_OWNER_EMAIL&&email==='abdulmohsinalkhalidi@gmail.com'))
+   return json({error:'email_delivery_unavailable',message:'خدمة إرسال رموز البريد غير متاحة حاليًا'},503);
+  const recent=await env.DB.prepare('SELECT COUNT(*) AS n FROM email_otps WHERE email LIKE ? AND sent_at>?').bind('profile-change:'+u.id+':%',now-3600000).first();
+  if(Number(recent?.n||0)>=5)return json({error:'rate_limited',message:'تجاوزت الحد المسموح من الطلبات، حاول لاحقًا'},429);
+  const previous=await env.DB.prepare('SELECT sent_at,hourly_count,window_start FROM email_otps WHERE email=?').bind(otpKey).first();
+  if(previous&&now-Number(previous.sent_at)<60000)return json({error:'rate_limited',message:'انتظر دقيقة قبل إرسال رمز آخر'},429);
+  const count=previous&&now-Number(previous.window_start)<3600000?Number(previous.hourly_count)+1:1;
+  if(count>5)return json({error:'rate_limited',message:'حاول لاحقًا'},429);
+  const exists=await env.DB.prepare('SELECT id FROM users WHERE lower(email)=? AND id<>?').bind(email,u.id).first();
+  if(exists)return json({error:'email_unavailable',message:'تعذر استخدام هذا البريد'},409);
+  const code=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,'0');
+  const salt=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(n=>n.toString(16).padStart(2,'0')).join('');
+  const digest=await hashOtp(salt+':'+code);
+  const sent=provider?await fetch('https://api.resend.com/emails',{
+   method:'POST',headers:{authorization:'Bearer '+env.RESEND_API_KEY,'content-type':'application/json'},
+   body:JSON.stringify({from:env.AUTH_FROM_EMAIL,to:[email],subject:'تأكيد تغيير البريد في لُقياك',
+    text:'رمز تأكيد تغيير البريد في حساب لُقياك: '+code+'\nصالح لمدة 10 دقائق. إذا لم تطلب ذلك تجاهل الرسالة.'})
+  }):await sendOwnerEmail(env,email,code);
+  if(!sent.ok)return json({error:'email_delivery_unavailable',message:'تعذر إرسال رمز التحقق'},503);
+  await env.DB.prepare('INSERT INTO email_otps(email,code_hash,salt,expires_at,sent_at,attempts,hourly_count,window_start) VALUES(?,?,?,?,?,0,?,?) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,salt=excluded.salt,expires_at=excluded.expires_at,sent_at=excluded.sent_at,attempts=0,hourly_count=excluded.hourly_count,window_start=excluded.window_start').bind(otpKey,digest,salt,now+600000,now,count,count===1?now:Number(previous.window_start)).run();
+  return json({ok:true,message:'أرسلنا رمز تحقق إلى البريد الجديد'});
+ }
+ const code=String(data?.code||'');
+ if(!/^\d{6}$/.test(code))return json({error:'invalid_code',message:'الرمز غير صحيح'},400);
+ const record=await env.DB.prepare('SELECT code_hash,salt,expires_at,attempts FROM email_otps WHERE email=?').bind(otpKey).first();
+ if(!record||Number(record.expires_at)<now||Number(record.attempts)>=5)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
+ await env.DB.prepare('UPDATE email_otps SET attempts=attempts+1 WHERE email=? AND attempts<5').bind(otpKey).run();
+ if(await hashOtp(record.salt+':'+code)!==record.code_hash)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
+ try{
+  await env.DB.batch([
+   env.DB.prepare('UPDATE users SET email=?,email_verified_at=? WHERE id=? AND email=?').bind(email,new Date().toISOString(),u.id,current.email),
+   env.DB.prepare('DELETE FROM email_otps WHERE email=? AND code_hash=?').bind(otpKey,record.code_hash)
+  ]);
+ }catch(e){
+  if(/unique|constraint/i.test(String(e)))return json({error:'email_unavailable',message:'تعذر استخدام هذا البريد'},409);
+  throw e;
+ }
+ return json({ok:true,email,message:'تم تأكيد البريد الجديد'});
+}
 if(path==='/api/social/avatar'&&method==='GET'){
  const person=await env.DB.prepare('SELECT avatar_key FROM users WHERE id=?').bind(u.id).first();
  if(!person?.avatar_key)return json({error:'no_avatar'},404);
