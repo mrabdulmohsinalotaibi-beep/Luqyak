@@ -459,10 +459,10 @@ if(path==='/api/private/lookup'&&request.method==='GET'){
  let person=null;
  if(peerId){
   if(!/^[a-f0-9-]{36}$/.test(peerId))return out({error:'invalid_peer'},400);
-  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.id=? AND u.account_status='active' AND u.id<>? AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id)))").bind(peerId,u.id,u.id,u.id).first();
+  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.id=? AND u.account_status='active' AND u.id<>? AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))").bind(peerId,u.id,u.id,u.id,u.id,u.id).first();
  }else{
   if(!q||!/^[a-z][a-z0-9_]{2,31}$/.test(q))return out({error:'invalid_username'},400);
-  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.username=? AND u.id<>? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id)))").bind(q,u.id,u.id,u.id).first();
+  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.username=? AND u.id<>? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))").bind(q,u.id,u.id,u.id,u.id,u.id).first();
  }
  return out({user:person?{id:person.id,username:person.username,display_name:person.display_name,public_jwk:JSON.parse(person.public_jwk),fingerprint:person.fingerprint}:null});
 }
