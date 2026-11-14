@@ -196,3 +196,33 @@ test('encrypted recipient selection requires accepted friend relationship',async
   const source=(await import('node:fs')).readFileSync(new URL('../worker.js',import.meta.url),'utf8');
   assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
 });
+
+test('blocked meetup owner cannot expose photo bytes or private details to the blocked account',async()=>{
+  const actor='00000000-0000-4000-8000-000000000010';
+  const host='00000000-0000-4000-8000-000000000011';
+  const meetupId='00000000-0000-4000-8000-000000000012';
+  let photoReads=0,queries=[];
+  const env={
+    DB:{prepare(sql){
+      queries.push(sql);
+      return {bind(){return {
+        async first(){
+          if(sql.includes('FROM auth_sessions'))return {id:actor,username:'visitor',display_name:'Visitor'};
+          if(sql.includes('SELECT * FROM lk_meetups'))return {id:meetupId,owner_id:host,privacy:'friends'};
+          if(sql.includes('FROM lk_user_blocks'))return {x:1};
+          throw Error('Unexpected read: '+sql);
+        },
+        async all(){throw Error('Blocked user must not be able to enumerate private details')},
+        async run(){throw Error('No writes allowed')}
+      }}};
+    }},
+    PHOTOS:{async get(){photoReads++;throw Error('Photo bytes must never be fetched')}}
+  };
+  const headers={cookie:'__Host-luqyak_session='+('a'.repeat(64))};
+  const photo=await worker.fetch(new Request(origin+'/api/social/photo?id='+meetupId+'&photo=00000000-0000-4000-8000-000000000013',{headers}),env,ctx);
+  assert.equal(photo.status,404);
+  assert.equal(photoReads,0);
+  const details=await worker.fetch(new Request(origin+'/api/social/meetup?id='+meetupId,{headers}),env,ctx);
+  assert.equal(details.status,404);
+  assert.ok(queries.some(q=>q.includes('FROM lk_user_blocks')));
+});
