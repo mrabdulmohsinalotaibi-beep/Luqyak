@@ -151,3 +151,19 @@ test('in-app logo uses an alpha-safe existing SVG, without a baked-in white squa
   assert.equal(app.status,200);
   assert.match(await app.text(),/src="\/brand\/logo\.svg"/);
 });
+
+test('account settings no longer expose per-device display preferences',async()=>{
+  const response=await get('/app');
+  assert.equal(response.status,200);
+  const html=await response.text();
+  assert.doesNotMatch(html,/تفضيلات العرض|عرض مكثف|lkCompactPref|lkMotionPref|lkApplyDisplayOptions/);
+  assert.doesNotMatch(html,/lk-compact|lk-less-motion/);
+});
+test('social UI includes consistent responsive dimensions and OS motion accessibility',async()=>{
+  const response=await get('/app');
+  const html=await response.text();
+  assert.match(html,/--lk-content-width:720px/);
+  assert.match(html,/One unified responsive density across phone, tablet, desktop/);
+  assert.match(html,/prefers-reduced-motion:reduce/);
+  assert.match(html,/viewport-fit=cover/);
+});
