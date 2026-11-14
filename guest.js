@@ -11,7 +11,7 @@ async function viewer(request,env){
 }
 async function linkFor(env,raw){
  if(!matchToken(raw))return null;
- return env.DB.prepare("SELECT l.*,m.title,m.place,m.starts_at,m.ended FROM lk_guest_links l JOIN lk_meetups m ON m.id=l.meetup_id WHERE l.token_hash=? AND l.revoked_at IS NULL").bind(await digest(raw)).first();
+ return env.DB.prepare("SELECT l.*,m.title,m.place,m.starts_at,m.ended FROM lk_guest_links l JOIN lk_meetups m ON m.id=l.meetup_id WHERE l.token_hash=? AND l.revoked_at IS NULL AND m.privacy<>'private'").bind(await digest(raw)).first();
 }
 async function guestFor(request,env,link){
  const cookieName='__Host-luqyak_guest_'+link.token_hash.slice(0,16);
@@ -25,7 +25,7 @@ function page(token){
  const token=${JSON.stringify(token)};const q=id=>document.getElementById(id);
  async function call(path,options={}){const r=await fetch('/api/guest/'+path+(path.includes('?')?'&':'?')+'token='+encodeURIComponent(token),{credentials:'same-origin',cache:'no-store',...options});const v=await r.json();if(!r.ok)throw Error(v.message||v.error||'تعذر إكمال العملية');return v}
  const say=m=>q('status').textContent=m;
- async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('ownerPanel').hidden=!v.owner;if(v.owner)await loadModeration();q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const button=document.createElement('button'),image=document.createElement('img');button.className='secondary';button.type='button';button.setAttribute('aria-label','عرض الصورة والتعليقات');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);button.append(image);button.onclick=()=>openPhoto(p.id);q('gallery').append(button)}}catch(e){say(e.message)}}
+ async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!(v.allowed||v.canUpload);q('file').hidden=!v.canUpload;q('upload').hidden=!v.canUpload;q('gallery').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('ownerPanel').hidden=!v.owner;if(v.owner)await loadModeration();q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const button=document.createElement('button'),image=document.createElement('img');button.className='secondary';button.type='button';button.setAttribute('aria-label','عرض الصورة والتعليقات');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);button.append(image);button.onclick=()=>openPhoto(p.id);q('gallery').append(button)}}catch(e){say(e.message)}}
  async function openPhoto(photoId){
   const dlg=document.createElement('dialog');dlg.style.cssText='width:min(96vw,570px);max-height:90dvh;overflow:auto;border:0;border-radius:20px;padding:16px;background:#fff;color:#392c27';
   const close=document.createElement('button');close.textContent='إغلاق';close.className='secondary';close.onclick=()=>dlg.close();dlg.append(close);
@@ -85,11 +85,11 @@ export async function guestHandler(request,env){
  const guest=await guestFor(request,env,link);
  const actor=await viewer(request,env);
  const owner=actor?.id===link.owner_id;
- const approved=guest?.status==='accepted',allowed=(approved||owner)&&link.can_view===1;
+ const approved=guest?.status==='accepted',allowed=owner||(approved&&link.can_view===1),canUpload=approved&&link.can_upload===1&&!link.ended;
  const apiPath=path.replace('/api/guest/','');
  if(apiPath==='album'&&method==='GET'){
   const photos=allowed?(await env.DB.prepare("SELECT id FROM lk_meetup_photos WHERE meetup_id=? UNION ALL SELECT id FROM lk_guest_photos WHERE meetup_id=? AND status='approved' LIMIT 180").bind(link.meetup_id,link.meetup_id).all()).results:[];
-  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,owner,photos});
+  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,canUpload,owner,photos});
  }
  if(apiPath==='join'&&method==='POST'){
   if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
@@ -114,7 +114,7 @@ export async function guestHandler(request,env){
  }
  if(apiPath==='upload'&&method==='POST'){
   if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
-  if(!approved||!link.can_upload||link.ended||(link.mode==='accounts'&&!actor))return reply({error:'not_allowed'},403);
+  if(!canUpload||(link.mode==='accounts'&&!actor))return reply({error:'not_allowed'},403);
   if(!(request.headers.get('content-type')||'').startsWith('image/jpeg'))return reply({error:'jpeg_required'},415);
   const size=Number(request.headers.get('content-length')||0);if(size>2500000)return reply({error:'too_large'},413);
   const bytes=new Uint8Array(await request.arrayBuffer());if(bytes.length<200||bytes.length>2500000||bytes[0]!==255||bytes[1]!==216||bytes.at(-2)!==255||bytes.at(-1)!==217)return reply({error:'invalid_image'},400);
@@ -141,7 +141,7 @@ export async function guestHandler(request,env){
   }
   if(method==='POST'&&request.headers.get('origin')===url.origin){
    const b=await request.json();if(!['approve','reject'].includes(b.action)||!['guest','photo'].includes(b.kind)||!/^[a-f0-9-]{36}$/.test(b.id||''))return reply({error:'invalid_request'},400);
-   if(b.kind==='guest')await env.DB.prepare("UPDATE lk_guest_members SET status=? WHERE id=? AND token_hash=?").bind(b.action==='approve'?'accepted':'rejected',b.id,link.token_hash).run();
+   if(b.kind==='guest'){await env.DB.prepare("UPDATE lk_guest_members SET status=? WHERE id=? AND token_hash=?").bind(b.action==='approve'?'accepted':'rejected',b.id,link.token_hash).run();if(b.action==='approve'){const member=await env.DB.prepare("SELECT claimed_user_id FROM lk_guest_members WHERE id=? AND token_hash=?").bind(b.id,link.token_hash).first();if(member?.claimed_user_id)await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,member.claimed_user_id).run()}}
    else await env.DB.prepare("UPDATE lk_guest_photos SET status=? WHERE id=? AND meetup_id=?").bind(b.action==='approve'?'approved':'rejected',b.id,link.meetup_id).run();
    return reply({ok:true});
   }
