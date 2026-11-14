@@ -599,12 +599,14 @@ for(const r of replies.results)items.push({key:'rsvp:'+r.id,type:'invites',title
 for(const m of messages.results)items.push({key:'message:'+m.sender_id+':'+m.at,type:'messages',title:'رسائل خاصة جديدة',body:'لديك '+m.total+' رسالة مشفّرة بانتظار الاستلام',at:new Date(m.at).toISOString(),href:'/private?peer='+encodeURIComponent(m.sender_id)});
 const sentEvents=await env.DB.prepare("SELECT e.id,e.sender_id,e.created_at,u.display_name FROM luqyak_message_events e JOIN users u ON u.id=e.sender_id WHERE e.recipient_id=? AND e.created_at>? ORDER BY e.created_at DESC LIMIT 45").bind(u.id,Date.now()-30*86400000).all();for(const msg of sentEvents.results)items.push({key:'message-event:'+msg.id,type:'messages',title:'رسالة خاصة جديدة',body:'لديك نشاط مشفّر جديد من '+(msg.display_name||'صديق'),at:new Date(msg.created_at).toISOString(),href:'/private?peer='+encodeURIComponent(msg.sender_id)});
 const [meetupInvites,meetupPhotos,meetupComments,meetupLikes]=await Promise.all([
-env.DB.prepare("SELECT m.meetup_id,h.title,h.created_at,u.display_name FROM lk_meetup_members m JOIN lk_meetups h ON h.id=m.meetup_id JOIN users u ON u.id=h.owner_id WHERE m.user_id=? AND m.status='pending' ORDER BY m.created_at DESC LIMIT 25").bind(u.id).all(),
+env.DB.prepare("SELECT m.meetup_id,h.title,m.created_at,u.display_name FROM lk_meetup_members m JOIN lk_meetups h ON h.id=m.meetup_id JOIN users u ON u.id=h.owner_id WHERE m.user_id=? AND m.status='pending' ORDER BY m.created_at DESC LIMIT 25").bind(u.id).all(),
 env.DB.prepare("SELECT p.id,p.meetup_id,p.created_at,h.title,u.display_name FROM lk_meetup_photos p JOIN lk_meetups h ON h.id=p.meetup_id JOIN users u ON u.id=p.uploader_id WHERE p.uploader_id<>? AND (h.owner_id=? OR EXISTS (SELECT 1 FROM lk_meetup_members m WHERE m.meetup_id=h.id AND m.user_id=? AND m.status='accepted')) ORDER BY p.created_at DESC LIMIT 25").bind(u.id,u.id,u.id).all(),
 env.DB.prepare("SELECT c.id,c.meetup_id,c.created_at,h.title,u.display_name FROM lk_meetup_comments c JOIN lk_meetups h ON h.id=c.meetup_id JOIN users u ON u.id=c.author_id WHERE c.author_id<>? AND (h.owner_id=? OR EXISTS (SELECT 1 FROM lk_meetup_members m WHERE m.meetup_id=h.id AND m.user_id=? AND m.status='accepted')) ORDER BY c.created_at DESC LIMIT 25").bind(u.id,u.id,u.id).all(),
 env.DB.prepare("SELECT l.meetup_id,l.user_id,l.created_at,h.title,u.display_name FROM lk_meetup_likes l JOIN lk_meetups h ON h.id=l.meetup_id JOIN users u ON u.id=l.user_id WHERE l.user_id<>? AND h.owner_id=? ORDER BY l.created_at DESC LIMIT 25").bind(u.id,u.id).all()
 ]);
 for(const r of meetupInvites.results)items.push({key:'meetup-invite:'+r.meetup_id,type:'invites',title:'دعوة لقاء جديدة',body:r.display_name+' دعاك إلى '+r.title,at:r.created_at,href:'/app?tab=meet&meetup='+encodeURIComponent(r.meetup_id)});
+const meetupResponses=await env.DB.prepare("SELECT m.meetup_id,m.user_id,m.status,m.created_at,h.title,u.display_name FROM lk_meetup_members m JOIN lk_meetups h ON h.id=m.meetup_id JOIN users u ON u.id=m.user_id WHERE h.owner_id=? AND m.status IN ('accepted','declined') ORDER BY m.created_at DESC LIMIT 40").bind(u.id).all();
+for(const r of meetupResponses.results)items.push({key:'meetup-response:'+r.meetup_id+':'+r.user_id+':'+r.status,type:'invites',title:r.status==='accepted'?'قبول دعوة اللقاء':'اعتذار عن اللقاء',body:r.display_name+(r.status==='accepted'?' انضم إلى ':' اعتذر عن ')+r.title,at:r.created_at,href:'/app?tab=meet&meetup='+encodeURIComponent(r.meetup_id)});
 for(const r of meetupPhotos.results)items.push({key:'meetup-photo:'+r.id,type:'invites',title:'صورة جديدة في لقاء',body:r.display_name+' أضاف صورة إلى '+r.title,at:r.created_at,href:'/app?tab=memories&meetup='+encodeURIComponent(r.meetup_id)});
 for(const r of meetupComments.results)items.push({key:'meetup-comment:'+r.id,type:'invites',title:'تعليق جديد',body:r.display_name+' علّق على '+r.title,at:r.created_at,href:'/app?tab=memories&meetup='+encodeURIComponent(r.meetup_id)});
 for(const r of meetupLikes.results)items.push({key:'meetup-like:'+r.meetup_id+':'+r.user_id,type:'invites',title:'إعجاب باللقاء',body:r.display_name+' أعجب بلقاء '+r.title,at:r.created_at,href:'/app?tab=memories&meetup='+encodeURIComponent(r.meetup_id)});
@@ -733,10 +735,10 @@ if(path==='/api/social/avatar'&&method==='POST'){
    if(m.owner_id===u.id)return {view:true,post:true,invited:false,owner:true};
    const blocked=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,m.owner_id,m.owner_id,u.id).first();
    if(blocked)return {view:false,post:false,invited:false,owner:false};
-   if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
    const member=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(m.id,u.id).first();
    if(member?.status==='accepted')return {view:true,post:true,invited:false,owner:false};
    if(member?.status==='pending')return {view:false,post:false,invited:true,owner:false};
+   if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
    if(m.privacy==='public')return {view:true,post:false,invited:false,owner:false};
    if(m.privacy==='friends'){
      const f=await env.DB.prepare("SELECT 1 x FROM luqyak_friend_requests WHERE status='accepted' AND ((sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?))").bind(u.id,m.owner_id,m.owner_id,u.id).first();
@@ -885,7 +887,7 @@ if(path==='/api/social/delete'&&method==='POST'){
  if(count.total>=30)return json({error:'member_limit',message:'وصل اللقاء للحد الأقصى من المشاركين'},400);
  const previous=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(id,target.id).first();
  if(previous?.status==='accepted')return json({ok:true,existing:true,status:'accepted'});
- if(previous?.status==='pending')return json({ok:true,existing:true,status:'pending'});
+ if(previous?.status==='pending'){if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,target.id,{title:'تذكير بدعوة لقاء',body:'لديك دعوة بانتظار الموافقة: '+meetup.title,type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup-reminder:'+id}));return json({ok:true,existing:true,status:'pending',message:'الدعوة بانتظار قبول العضو'});}
  await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'pending') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='pending'").bind(id,target.id).run();
  if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,target.id,{title:'دعوة لقاء جديدة',body:'لديك دعوة للانضمام إلى لقاء',type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup:'+id}));
  return json({ok:true,status:'pending'});
@@ -895,7 +897,9 @@ if(path==='/api/social/rsvp'&&method==='POST'){
    let b;try{b=await body()}catch{return json({error:'invalid_body'},400)}
    if(!['accepted','declined'].includes(b.status))return json({error:'invalid_status'},400);
    const result=await env.DB.prepare("UPDATE lk_meetup_members SET status=? WHERE meetup_id=? AND user_id=? AND status IN ('pending','accepted')").bind(b.status,id,u.id).run();
-   return result.meta.changes?json({ok:true}):json({error:'not_invited'},403);
+   if(!result.meta.changes)return json({error:'not_invited'},403);
+   if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,meetup.owner_id,{title:b.status==='accepted'?'تم قبول دعوة اللقاء':'اعتذار عن اللقاء',body:(u.display_name||u.username||'أحد الأعضاء')+(b.status==='accepted'?' وافق على الانضمام إلى ':' اعتذر عن ') +meetup.title,type:'invites',url:'/app?tab=meet&meetup='+encodeURIComponent(id),tag:'meetup-response:'+id+':'+u.id}));
+   return json({ok:true,status:b.status,canPost:b.status==='accepted',meetup_id:id});
  }
  if(path==='/api/social/photo'&&method==='GET'){
    if(!access.view)return json({error:'not_found'},404);
