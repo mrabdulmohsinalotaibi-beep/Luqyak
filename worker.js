@@ -872,7 +872,14 @@ if(path==='/api/social/delete-photo'&&method==='POST'){
    if(localUpload&&!legacyKey){const sig=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('luqyak/upload/v1:'+u.id+':'+id+':'+localUpload)))).slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('');photoId=sig.slice(0,8)+'-'+sig.slice(8,12)+'-'+sig.slice(12,16)+'-'+sig.slice(16,20)+'-'+sig.slice(20,32);const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(known)return json({ok:true,id:photoId,existing:true})}
    if(legacyKey){const sig=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('luqyak/photo/v1:'+u.id+':'+id+':'+legacyKey)))).slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('');photoId=sig.slice(0,8)+'-'+sig.slice(8,12)+'-'+sig.slice(12,16)+'-'+sig.slice(16,20)+'-'+sig.slice(20,32);const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(known)return json({ok:true,id:photoId,existing:true})}
    const key='meetup-albums/'+id+'/'+photoId+'.jpg';
-   await env.PHOTOS.put(key,ab,{httpMetadata:{contentType:'image/jpeg'}});
+   const stored=await env.PHOTOS.put(key,ab,{httpMetadata:{contentType:'image/jpeg'},onlyIf:{etagDoesNotMatch:'*'}});
+   if(!stored){
+     const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();
+     if(known)return json({ok:true,id:photoId,existing:true});
+     const recovered=await env.DB.prepare('INSERT OR IGNORE INTO lk_meetup_photos(id,meetup_id,uploader_id,object_key) VALUES(?,?,?,?)').bind(photoId,id,u.id,key).run();
+     if(!recovered.meta.changes)return json({ok:true,id:photoId,existing:true});
+     return json({ok:true,id:photoId,recovered:true});
+   }
    try{const inserted=await env.DB.prepare('INSERT OR IGNORE INTO lk_meetup_photos(id,meetup_id,uploader_id,object_key) VALUES(?,?,?,?)').bind(photoId,id,u.id,key).run();if(!inserted.meta.changes)return json({ok:true,id:photoId,existing:true});}catch(e){const saved=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(!saved)await env.PHOTOS.delete(key);throw e}
    if(ctx?.waitUntil)ctx.waitUntil((async()=>{const members=await env.DB.prepare("SELECT user_id FROM lk_meetup_members WHERE meetup_id=? AND status='accepted' AND user_id<>? LIMIT 8").bind(id,u.id).all();const ids=[...new Set([meetup.owner_id,...members.results.map(x=>x.user_id)])].filter(x=>x&&x!==u.id);await Promise.allSettled(ids.map(peer=>lkPushUser(env,peer,{title:'ذكرى مصورة جديدة',body:'أُضيفت صورة إلى ألبوم لقاء مشترك',type:'invites',url:'/app?tab=memories&meetup='+encodeURIComponent(id),tag:'photo:'+photoId})))})());
    return json({ok:true,id:photoId},201);

@@ -196,3 +196,37 @@ test('encrypted recipient selection requires accepted friend relationship',async
   const source=(await import('node:fs')).readFileSync(new URL('../worker.js',import.meta.url),'utf8');
   assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
 });
+
+test('repeat photo upload never overwrites R2; interrupted upload metadata can recover',async()=>{
+ const id='00000000-0000-4000-8000-000000000001',userId='00000000-0000-4000-8000-000000000002';
+ const file=new Uint8Array(200);file[0]=255;file[1]=216;file[198]=255;file[199]=217;
+ let puts=0,inserted=0;
+ const env={
+  DB:{prepare(sql){return {bind(){return {
+   async first(){
+    if(sql.includes('FROM auth_sessions'))return {id:userId,username:'owner',display_name:'Owner'};
+    if(sql.includes('SELECT * FROM lk_meetups'))return {id,owner_id:userId,privacy:'private',title:'Test'};
+    if(sql.includes('SELECT id FROM lk_meetup_photos'))return null;
+    throw new Error('Unexpected read: '+sql);
+   },
+   async run(){
+    if(sql.includes('INSERT OR IGNORE INTO lk_meetup_photos')){inserted++;return {meta:{changes:1}}}
+    throw new Error('Unexpected write: '+sql);
+   }
+  }}}}},
+  PHOTOS:{async put(key,data,options){
+   puts++;assert.match(key,/^meetup-albums\//);
+   assert.equal(options.onlyIf.etagDoesNotMatch,'*');
+   return null; // Another concurrent request already stored original image.
+  }}
+ };
+ const response=await worker.fetch(new Request(origin+'/api/social/upload?id='+id,{
+   method:'POST',
+   headers:{cookie:'__Host-luqyak_session='+('a'.repeat(64)),origin,'content-type':'image/jpeg','x-luqyak-upload-id':'00000000-0000-4000-8000-000000000003'},
+   body:file
+ }),env,{});
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).recovered,true);
+ assert.equal(puts,1);
+ assert.equal(inserted,1);
+});
