@@ -16,8 +16,8 @@ test('recovery module is served as no-store JavaScript and encrypted chats are t
  const ctx={waitUntil(){}};
  let response=await worker.fetch(new Request('https://luqyak.athat.app/crypto/recovery.mjs'),{},ctx);
  assert.equal(response.status,200);
- assert.match(response.headers.get('content-type'),'javascript');
- assert.match(response.headers.get('cache-control'),'no-store');
+ assert.match(response.headers.get('content-type'),/javascript/);
+ assert.match(response.headers.get('cache-control'),/no-store/);
  assert.equal(await response.text(),RECOVERY_MODULE);
  response=await worker.fetch(new Request('https://luqyak.athat.app/private'),{},ctx);
  assert.equal(response.status,200);
