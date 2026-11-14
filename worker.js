@@ -668,14 +668,12 @@ if((path==='/api/social/email/request'||path==='/api/social/email/verify')&&meth
  const current=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(u.id).first();
  if(!current)return json({error:'login_required'},401);
  if(current.email?.toLowerCase()===email)return json({error:'same_email',message:'هذا بريدك الحالي'},400);
- const otpKey='profile-change:'+u.id+':'+email,now=Date.now();
+ const otpKey='profile-change:'+u.id,now=Date.now();
  const hashOtp=async v=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)))).map(x=>x.toString(16).padStart(2,'0')).join('');
  if(path==='/api/social/email/request'){
   const provider=Boolean(env.RESEND_API_KEY&&env.AUTH_FROM_EMAIL);
   if(!provider && !(env.VERIFY_OWNER_EMAIL&&email==='abdulmohsinalkhalidi@gmail.com'))
    return json({error:'email_delivery_unavailable',message:'خدمة إرسال رموز البريد غير متاحة حاليًا'},503);
-  const recent=await env.DB.prepare('SELECT COUNT(*) AS n FROM email_otps WHERE email LIKE ? AND sent_at>?').bind('profile-change:'+u.id+':%',now-3600000).first();
-  if(Number(recent?.n||0)>=5)return json({error:'rate_limited',message:'تجاوزت الحد المسموح من الطلبات، حاول لاحقًا'},429);
   const previous=await env.DB.prepare('SELECT sent_at,hourly_count,window_start FROM email_otps WHERE email=?').bind(otpKey).first();
   if(previous&&now-Number(previous.sent_at)<60000)return json({error:'rate_limited',message:'انتظر دقيقة قبل إرسال رمز آخر'},429);
   const count=previous&&now-Number(previous.window_start)<3600000?Number(previous.hourly_count)+1:1;
@@ -684,7 +682,7 @@ if((path==='/api/social/email/request'||path==='/api/social/email/verify')&&meth
   if(exists)return json({error:'email_unavailable',message:'تعذر استخدام هذا البريد'},409);
   const code=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,'0');
   const salt=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(n=>n.toString(16).padStart(2,'0')).join('');
-  const digest=await hashOtp(salt+':'+code);
+  const digest=await hashOtp(salt+':'+email+':'+code);
   const sent=provider?await fetch('https://api.resend.com/emails',{
    method:'POST',headers:{authorization:'Bearer '+env.RESEND_API_KEY,'content-type':'application/json'},
    body:JSON.stringify({from:env.AUTH_FROM_EMAIL,to:[email],subject:'تأكيد تغيير البريد في لُقياك',
@@ -700,7 +698,7 @@ if((path==='/api/social/email/request'||path==='/api/social/email/verify')&&meth
  if(!record||Number(record.expires_at)<now||Number(record.attempts)>=5)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
  const attempt=await env.DB.prepare('UPDATE email_otps SET attempts=attempts+1 WHERE email=? AND code_hash=? AND attempts<5 AND expires_at>=?').bind(otpKey,record.code_hash,now).run();
  if(Number(attempt.meta?.changes)!==1)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
- if(await hashOtp(record.salt+':'+code)!==record.code_hash)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
+ if(await hashOtp(record.salt+':'+email+':'+code)!==record.code_hash)return json({error:'invalid_code',message:'رمز غير صحيح أو منتهي'},401);
  const consumed=await env.DB.prepare('DELETE FROM email_otps WHERE email=? AND code_hash=? AND attempts<=5 AND expires_at>=?').bind(otpKey,record.code_hash,now).run();
  if(Number(consumed.meta?.changes)!==1)return json({error:'invalid_code',message:'هذا الرمز استُخدم أو انتهت صلاحيته'},401);
  try{
