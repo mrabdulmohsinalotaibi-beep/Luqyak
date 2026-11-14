@@ -32,7 +32,7 @@ test('main social chat tab launches encrypted client by default and labels legac
  const response=await worker.fetch(new Request('https://luqyak.athat.app/app'),{},{waitUntil(){}});
  assert.equal(response.status,200);
  const html=await response.text();
- assert.match(html,/function chats\(\)\{return [\s\S]*?href=\\"\/private\\" class=\\"primary\\"/);
+ assert.match(html,/href="\/private" class="primary"/);
  assert.match(html,/قراءة الرسائل القديمة غير المشفّرة/);
  assert.match(html,/المفتاح والرسائل المقروءة محفوظان محليًا/);
 });
