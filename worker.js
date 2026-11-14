@@ -467,13 +467,13 @@ if(path==='/api/private/lookup'&&request.method==='GET'){
  return out({user:person?{id:person.id,username:person.username,display_name:person.display_name,public_jwk:JSON.parse(person.public_jwk),fingerprint:person.fingerprint}:null});
 }
 if(path==='/api/private/friends'&&request.method==='GET'){
-const rows=await env.DB.prepare("SELECT f.id,f.sender_id,f.recipient_id,f.status,f.created_at,u.id AS peer_id,u.username,u.display_name FROM luqyak_friend_requests f JOIN users u ON u.id=CASE WHEN f.sender_id=? THEN f.recipient_id ELSE f.sender_id END WHERE f.sender_id=? OR f.recipient_id=? ORDER BY f.created_at DESC LIMIT 200").bind(u.id,u.id,u.id).all();
+const rows=await env.DB.prepare("SELECT f.id,f.sender_id,f.recipient_id,f.status,f.created_at,u.id AS peer_id,u.username,u.display_name FROM luqyak_friend_requests f JOIN users u ON u.id=CASE WHEN f.sender_id=? THEN f.recipient_id ELSE f.sender_id END WHERE (f.sender_id=? OR f.recipient_id=?) AND u.account_status='active' AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?)) ORDER BY f.created_at DESC LIMIT 200").bind(u.id,u.id,u.id,u.id,u.id).all();
 return out({items:rows.results.map(r=>({id:r.id,peer_id:r.peer_id,username:r.username,display_name:r.display_name,status:r.status,direction:r.sender_id===u.id?'outgoing':'incoming'}))});
 }
 if(path==='/api/private/friends/search'&&request.method==='GET'){
 const q=new URL(request.url).searchParams.get('username')?.trim().toLowerCase()||'';
 if(!/^[a-z][a-z0-9_]{2,31}$/.test(q))return out({error:'invalid_username'},400);
-const person=await env.DB.prepare("SELECT id,username,display_name FROM users WHERE username=? AND id<>? AND account_status='active'").bind(q,u.id).first();
+const person=await env.DB.prepare("SELECT id,username,display_name FROM users WHERE username=? AND id<>? AND account_status='active' AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=users.id) OR (b.blocker_id=users.id AND b.blocked_id=?))").bind(q,u.id,u.id,u.id).first();
 return out({user:person||null});
 }
 if(request.method!=='POST')return out({error:'method_not_allowed'},405);
@@ -551,7 +551,7 @@ if(path==='/api/private/send'){
 }
 if(path==='/api/private/inbox'){
  await env.DB.prepare('DELETE FROM encrypted_delivery_queue WHERE expires_at<?').bind(Date.now()).run();
- const msgs=await env.DB.prepare('SELECT q.id,q.sender_id,q.envelope,q.created_at,p.public_jwk,p.fingerprint FROM encrypted_delivery_queue q LEFT JOIN encrypted_public_keys p ON p.user_id=q.sender_id WHERE q.recipient_id=? AND q.expires_at>? ORDER BY q.created_at ASC LIMIT 100').bind(u.id,Date.now()).all();
+ const msgs=await env.DB.prepare('SELECT q.id,q.sender_id,q.envelope,q.created_at,p.public_jwk,p.fingerprint FROM encrypted_delivery_queue q LEFT JOIN encrypted_public_keys p ON p.user_id=q.sender_id WHERE q.recipient_id=? AND q.expires_at>? AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=q.sender_id AND f.recipient_id=q.recipient_id) OR (f.recipient_id=q.sender_id AND f.sender_id=q.recipient_id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=q.sender_id AND b.blocked_id=q.recipient_id) OR (b.blocker_id=q.recipient_id AND b.blocked_id=q.sender_id)) ORDER BY q.created_at ASC LIMIT 100').bind(u.id,Date.now()).all();
  return out({messages:msgs.results.map(x=>({id:x.id,sender_id:x.sender_id,created_at:x.created_at,envelope:JSON.parse(x.envelope),sender_key:x.public_jwk?JSON.parse(x.public_jwk):null,sender_fingerprint:x.fingerprint}))});
 }
 if(path==='/api/private/ack'){
@@ -834,10 +834,10 @@ if(path==='/api/social/delete'&&method==='POST'){
  return json({ok:true,status:'pending'});
 }
 if(path==='/api/social/rsvp'&&method==='POST'){
-   if(!csrf()||!meetup)return json({error:'not_found'},404);
+   if(!csrf()||!meetup||(!access.view&&!access.invited))return json({error:'not_found'},404);
    let b;try{b=await body()}catch{return json({error:'invalid_body'},400)}
    if(!['accepted','declined'].includes(b.status))return json({error:'invalid_status'},400);
-   const result=await env.DB.prepare("UPDATE lk_meetup_members SET status=? WHERE meetup_id=? AND user_id=? AND status IN ('pending','accepted','declined')").bind(b.status,id,u.id).run();
+   const result=await env.DB.prepare("UPDATE lk_meetup_members SET status=? WHERE meetup_id=? AND user_id=? AND status IN ('pending','accepted')").bind(b.status,id,u.id).run();
    return result.meta.changes?json({ok:true}):json({error:'not_invited'},403);
  }
  if(path==='/api/social/photo'&&method==='GET'){
