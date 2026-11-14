@@ -33,3 +33,24 @@ test('avatar controls use authenticated same-origin upload', () => {
   assert.match(controls, /openAvatarCropper\(file\)/);
   assert.match(controls, /\/api\/social\/avatar/);
 });
+
+
+test('Worker actually serves the avatar editor module and connects it to profile', () => {
+  assert.match(worker, /path==='\\/src\\/profile-avatar-editor\\.js'/);
+  assert.match(worker, /import\\('\\/src\\/profile-avatar-editor\\.js'\\)/);
+  assert.match(worker, /capture','user'/);
+  assert.match(worker, /border-radius:50%!important/);
+});
+
+test('Changing email requires an active user, same-origin POST and code verification', () => {
+  const request = worker.indexOf("if((path==='/api/social/email/request'");
+  assert.ok(request > 0);
+  const body = worker.slice(request, worker.indexOf("if(path==='/api/social/avatar'&&method==='GET')",request));
+  assert.match(body, /if\\(!csrf\\(\\)\\)/);
+  assert.match(body, /profile-change:/);
+  assert.match(body, /rate_limited/);
+  assert.match(body, /code_hash/);
+  assert.match(body, /expires_at/);
+  assert.match(body, /UPDATE users SET email=\\?,email_verified_at=\\? WHERE id=\\?/);
+  assert.match(worker, /api\\/social\\/email\\/verify/);
+});
