@@ -63,3 +63,28 @@ test('Embedded account photo and email handlers parse as JavaScript', () => {
   assert.ok(emailStart > 0 && emailEnd > emailStart);
   assert.doesNotThrow(() => new Function(decode(worker.slice(emailStart, emailEnd + 3))));
 });
+
+test('email verification is single-use, account scoped and target-email bound', () => {
+  const start = worker.indexOf("if((path==='/api/social/email/request'");
+  const end = worker.indexOf("if(path==='/api/social/avatar'&&method==='GET')", start);
+  assert.ok(start > 0 && end > start);
+  const route = worker.slice(start, end);
+  assert.match(route, /const otpKey='profile-change:'\+u\.id,now=Date\.now\(\)/);
+  assert.match(route, /hashOtp\(salt\+':'\+email\+':'\+code\)/);
+  assert.match(route, /hashOtp\(record\.salt\+':'\+email\+':'\+code\)/);
+  assert.match(route, /attempts=attempts\+1 WHERE email=\? AND code_hash=\? AND attempts<5 AND expires_at>=\?/);
+  assert.match(route, /DELETE FROM email_otps WHERE email=\? AND code_hash=\? AND attempts<=5 AND expires_at>=\?/);
+  assert.ok(route.indexOf('DELETE FROM email_otps WHERE email=? AND code_hash=? AND attempts<=5') <
+    route.indexOf('UPDATE users SET email=?,email_verified_at=?'));
+  assert.match(route, /if\(!csrf\(\)\)/);
+});
+
+test('email change and avatar handlers are part of account UI and require explicit user action', () => {
+  assert.match(worker, /lkEmailEditBtn/);
+  assert.match(worker, /lkEmailCodeWrap/);
+  assert.match(worker, /lkEmailStatus/);
+  assert.match(worker, /user\.email=d\.email/);
+  assert.match(worker, /capture','user'/);
+  assert.match(worker, /openAvatarCropper\(file\)/);
+  assert.match(worker, /if\(!blob\)return/);
+});
