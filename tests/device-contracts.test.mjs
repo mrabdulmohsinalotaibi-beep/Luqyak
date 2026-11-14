@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import worker from '../worker.js';
 
 const origin='https://luqyak.athat.app';
@@ -49,4 +50,13 @@ test('private photo endpoint requires a session even for guessed IDs',async()=>{
   const response=await worker.fetch(new Request(origin+'/api/social/photo?id=00000000-0000-4000-8000-000000000001&photo=00000000-0000-4000-8000-000000000002'),{},ctx);
   assert.equal(response.status,401);
   assert.match(response.headers.get('cache-control')||'',/no-store/);
+});
+
+
+test('redesigned app includes syntactically valid browser scripts',async()=>{
+ const page=await worker.fetch(new Request(origin+'/app'),{},ctx);
+ const html=await page.text();
+ const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+ assert.ok(scripts.length>0);
+ for(const [,body] of scripts)if(body.trim())assert.doesNotThrow(()=>new vm.Script(body));
 });
