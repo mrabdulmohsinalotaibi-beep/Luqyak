@@ -19,6 +19,17 @@ test('private relay requires a session', async()=>{
   assert.match(response.headers.get('cache-control')||'',/no-store/i);
 });
 
+test('account chat messages and send endpoint require a session',async()=>{
+  for(const [path,options] of [
+    ['/api/chat/messages?peer=00000000-0000-4000-8000-000000000001',{}],
+    ['/api/chat/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:'test'})}]
+  ]){
+    const response=await worker.fetch(request(path,options),{},ctx);
+    assert.equal(response.status,401,path);
+    assert.match(response.headers.get('cache-control')||'',/no-store/i);
+  }
+});
+
 test('web app manifest uses the configured scope and theme',async()=>{
   const response=await worker.fetch(request('/manifest.webmanifest'),{},ctx);
   assert.equal(response.status,200);
