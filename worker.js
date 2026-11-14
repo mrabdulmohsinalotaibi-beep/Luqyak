@@ -676,6 +676,8 @@ if(path==='/api/social/avatar'&&method==='POST'){
  const can=async(m)=>{
    if(!m)return {view:false,post:false,invited:false,owner:false};
    if(m.owner_id===u.id)return {view:true,post:true,invited:false,owner:true};
+   const blocked=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,m.owner_id,m.owner_id,u.id).first();
+   if(blocked)return {view:false,post:false,invited:false,owner:false};
    if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
    const member=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(m.id,u.id).first();
    if(member?.status==='accepted')return {view:true,post:true,invited:false,owner:false};
@@ -706,20 +708,23 @@ if(path==='/api/social/avatar'&&method==='POST'){
    if(!meetings.length)return json({items:[]});
    const ids=meetings.map(x=>x.id), placeholders=ids.map(()=>'?').join(',');
    const ownerIds=[...new Set(meetings.map(x=>x.owner_id))],ownerMarks=ownerIds.map(()=>'?').join(',');
-   const [memberships,friendships,hosts,photos,counts]=await Promise.all([
+   const [memberships,friendships,hosts,photos,counts,blockRows]=await Promise.all([
      env.DB.prepare('SELECT meetup_id,status FROM lk_meetup_members WHERE user_id=? AND meetup_id IN ('+placeholders+')').bind(u.id,...ids).all(),
      env.DB.prepare("SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END AS peer_id FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?)").bind(u.id,u.id,u.id).all(),
      env.DB.prepare('SELECT id,display_name FROM users WHERE id IN ('+ownerMarks+')').bind(...ownerIds).all(),
      env.DB.prepare('SELECT p.meetup_id,COUNT(*) AS total,(SELECT p2.id FROM lk_meetup_photos p2 WHERE p2.meetup_id=p.meetup_id ORDER BY p2.created_at,p2.id LIMIT 1) AS cover_id FROM lk_meetup_photos p WHERE p.meetup_id IN ('+placeholders+') GROUP BY p.meetup_id').bind(...ids).all(),
-     env.DB.prepare("SELECT meetup_id,COUNT(*) AS all_count,SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) AS accepted_count FROM lk_meetup_members WHERE meetup_id IN ("+placeholders+") GROUP BY meetup_id").bind(...ids).all()
+     env.DB.prepare("SELECT meetup_id,COUNT(*) AS all_count,SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) AS accepted_count FROM lk_meetup_members WHERE meetup_id IN ("+placeholders+") GROUP BY meetup_id").bind(...ids).all(),
+     env.DB.prepare('SELECT blocker_id,blocked_id FROM lk_user_blocks WHERE blocker_id=? OR blocked_id=?').bind(u.id,u.id).all()
    ]);
    const memberBy=new Map((memberships.results||[]).map(x=>[x.meetup_id,x.status]));
    const friendIds=new Set((friendships.results||[]).map(x=>x.peer_id));
+   const blockedOwnerIds=new Set((blockRows.results||[]).map(x=>x.blocker_id===u.id?x.blocked_id:x.blocker_id));
    const hostBy=new Map((hosts.results||[]).map(x=>[x.id,x.display_name]));
    const photoBy=new Map((photos.results||[]).map(x=>[x.meetup_id,x]));
    const countBy=new Map((counts.results||[]).map(x=>[x.meetup_id,x]));
    const output=[];
    for(const m of meetings){
+     if(m.owner_id!==u.id&&blockedOwnerIds.has(m.owner_id))continue;
      const owner=m.owner_id===u.id,status=memberBy.get(m.id);
      let view=false,post=false,invited=false;
      if(owner){view=true;post=true}
