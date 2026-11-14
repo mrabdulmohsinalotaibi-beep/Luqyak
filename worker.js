@@ -387,56 +387,6 @@ async function lkLiveSignal(env,userId){
  if(!env.LIVE_CHANNEL||!/^[a-f0-9-]{36}$/.test(String(userId||'')))return;
  try{await env.LIVE_CHANNEL.fetch('https://internal/signal?user='+encodeURIComponent(userId),{method:'POST'})}catch(e){/* leave background notifications and polling available */}
 }
-async function lkAccountChat(request,env,path,ctx){
- const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
- const token=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/)?.[1];
- if(!token)return reply({error:'login_required'},401);
- const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
- const actor=await env.DB.prepare("SELECT u.id,u.username,u.display_name FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.account_status='active'").bind(sha,new Date().toISOString()).first();
- if(!actor)return reply({error:'login_required'},401);
- const url=new URL(request.url),peer=String(url.searchParams.get('peer')||'');
- const hasPeer=/^[a-f0-9-]{36}$/.test(peer)&&peer!==actor.id;
- const blocked=async(id)=>!!(await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(actor.id,id,id,actor.id).first());
- const friends=async(id)=>!await blocked(id)&&!!(await env.DB.prepare("SELECT 1 x FROM luqyak_friend_requests f JOIN users u ON u.id=? WHERE u.account_status='active' AND f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=?) OR (f.sender_id=? AND f.recipient_id=?)) LIMIT 1").bind(id,actor.id,id,id,actor.id).first());
- if(path==='/api/chat/list'&&request.method==='GET'){
-  // Legacy chat contacts are also a private relationship list.
-  if(new URL(request.url).searchParams.size)return reply({error:'relationship_list_private'},403);
-  const relationsRaw=(await env.DB.prepare("SELECT u.id,u.username,u.display_name FROM luqyak_friend_requests f JOIN users u ON u.id=CASE WHEN f.sender_id=? THEN f.recipient_id ELSE f.sender_id END WHERE f.status='accepted' AND (f.sender_id=? OR f.recipient_id=?) AND u.account_status='active' ORDER BY u.display_name LIMIT 150").bind(actor.id,actor.id,actor.id).all()).results;
-  const [blockRows,latestRows,unreadRows]=await Promise.all([
-    env.DB.prepare('SELECT blocker_id,blocked_id FROM lk_user_blocks WHERE blocker_id=? OR blocked_id=?').bind(actor.id,actor.id).all(),
-    env.DB.prepare('WITH ranked AS (SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END AS peer_id,body,created_at,sender_id,ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END ORDER BY created_at DESC) AS rank FROM lk_account_messages WHERE sender_id=? OR recipient_id=?) SELECT peer_id,body,created_at,sender_id FROM ranked WHERE rank=1').bind(actor.id,actor.id,actor.id,actor.id).all(),
-    env.DB.prepare('SELECT sender_id AS peer_id,COUNT(*) AS n FROM lk_account_messages WHERE recipient_id=? AND read_at IS NULL GROUP BY sender_id').bind(actor.id).all()
-  ]);
-  const blockedIds=new Set((blockRows.results||[]).map(x=>x.blocker_id===actor.id?x.blocked_id:x.blocker_id));
-  const latestBy=new Map((latestRows.results||[]).map(x=>[x.peer_id,x]));
-  const unreadBy=new Map((unreadRows.results||[]).map(x=>[x.peer_id,x.n]));
-  const entries=relationsRaw.filter(person=>!blockedIds.has(person.id)).map(person=>{
-    const last=latestBy.get(person.id);
-    return {id:person.id,username:person.username,display_name:person.display_name,last:last?{body:last.body,at:last.created_at,mine:last.sender_id===actor.id}:null,unread:unreadBy.get(person.id)||0};
-  });
-  entries.sort((a,b)=>(b.last?.at||0)-(a.last?.at||0));
-  return reply({items:entries});
- }
- if(!hasPeer)return reply({error:'invalid_peer'},400);
- if(!(await friends(peer)))return reply({error:'not_friends'},403);
- if(path==='/api/chat/messages'&&request.method==='GET'){
-  const records=(await env.DB.prepare("SELECT id,sender_id,recipient_id,body,created_at,read_at FROM lk_account_messages WHERE (sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?) ORDER BY created_at DESC LIMIT 150").bind(actor.id,peer,peer,actor.id).all()).results;
-  return reply({items:records.reverse(),me:actor.id});
- }
- if(request.method!=='POST'||!['/api/chat/send','/api/chat/read'].includes(path))return reply({error:'method_not_allowed'},405);
- if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
- if(!(request.headers.get('content-type')||'').toLowerCase().startsWith('application/json'))return reply({error:'json_required'},415);
- if(Number(request.headers.get('content-length')||0)>6500)return reply({error:'too_large'},413);
- let payload;try{payload=await request.json()}catch{return reply({error:'invalid_json'},400)}
- if(path==='/api/chat/read'){
-  await env.DB.prepare("UPDATE lk_account_messages SET read_at=? WHERE sender_id=? AND recipient_id=? AND read_at IS NULL").bind(Date.now(),peer,actor.id).run();
-  return reply({ok:true});
- }
- // Keep legacy chat history readable, but reject all new plaintext messages.
- return reply({error:'encrypted_chat_required',message:'الرسائل الجديدة تُرسل عبر المحادثات المشفّرة فقط'},409);
-
-}
-
 async function privateRelay(request,env,path,ctx){
 const out=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const token=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/)?.[1];
@@ -444,20 +394,6 @@ if(!token)return out({error:'login_required'},401);
 const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const u=await env.DB.prepare("SELECT u.id,u.username,u.email_verified_at FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.account_status='active'").bind(hash,new Date().toISOString()).first();
 if(!u)return out({error:'login_required'},401);
-if(path==='/api/private/status'&&request.method==='GET')return out({ready:true,mode:'device-local-with-expiring-ciphertext-relay',maximum_pending_hours:24,account_id:u.id});
-if(path==='/api/private/key'&&request.method==='GET'){const row=await env.DB.prepare('SELECT public_jwk,fingerprint FROM encrypted_public_keys WHERE user_id=?').bind(u.id).first();return out({key:row?{public_jwk:JSON.parse(row.public_jwk),fingerprint:row.fingerprint}:null})}
-if(path==='/api/private/lookup'&&request.method==='GET'){
- const url=new URL(request.url),peerId=url.searchParams.get('peer_id'),q=url.searchParams.get('username')?.toLowerCase().trim();
- let person=null;
- if(peerId){
-  if(!/^[a-f0-9-]{36}$/.test(peerId))return out({error:'invalid_peer'},400);
-  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.id=? AND u.account_status='active' AND u.id<>? AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))").bind(peerId,u.id,u.id,u.id,u.id,u.id).first();
- }else{
-  if(!q||!/^[a-z][a-z0-9_]{2,31}$/.test(q))return out({error:'invalid_username'},400);
-  person=await env.DB.prepare("SELECT u.id,u.username,u.display_name,p.public_jwk,p.fingerprint FROM users u JOIN encrypted_public_keys p ON p.user_id=u.id WHERE u.username=? AND u.id<>? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=u.id) OR (f.recipient_id=? AND f.sender_id=u.id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))").bind(q,u.id,u.id,u.id,u.id,u.id).first();
- }
- return out({user:person?{id:person.id,username:person.username,display_name:person.display_name,public_jwk:JSON.parse(person.public_jwk),fingerprint:person.fingerprint}:null});
-}
 if(path==='/api/private/friends'&&request.method==='GET'){
 // The caller may only retrieve their own relationship list. Never accept a target
 // account identifier or an option to enumerate counts or friends-of-friends.
@@ -489,7 +425,7 @@ const lim=await env.DB.prepare("SELECT COUNT(*) AS n FROM luqyak_friend_requests
 if(lim.n>=15)return out({error:'rate_limited'},429);
 await env.DB.prepare("INSERT INTO luqyak_friend_requests(sender_id,recipient_id,status) VALUES(?,?,'pending')").bind(u.id,peer.id).run();
 if(ctx?.waitUntil)ctx.waitUntil(lkLiveSignal(env,peer.id));
-if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,peer.id,{title:'طلب صداقة جديد',body:'لديك طلب صداقة في لُقْيَاك',type:'friends',url:'/account-chat',tag:'friend-request:'+u.id}));
+if(ctx?.waitUntil)ctx.waitUntil(lkPushUser(env,peer.id,{title:'طلب صداقة جديد',body:'لديك طلب صداقة في لُقْيَاك',type:'friends',url:'/app?tab=chats',tag:'friend-request:'+u.id}));
 return out({ok:true});
 }
 if(path==='/api/private/friends/respond'){
@@ -497,63 +433,8 @@ const id=Number(body?.id),decision=body?.action;
 if(!Number.isSafeInteger(id)||id<=0||!['accept','reject'].includes(decision))return out({error:'invalid_request'},400);
 if(decision==='accept'){const pending=await env.DB.prepare("SELECT sender_id FROM luqyak_friend_requests WHERE id=? AND recipient_id=? AND status='pending'").bind(id,u.id).first();if(pending?.sender_id){const block=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,pending.sender_id,pending.sender_id,u.id).first();if(block)return out({error:'blocked_user'},403)}}
 const result=await env.DB.prepare("UPDATE luqyak_friend_requests SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND recipient_id=? AND status='pending'").bind(decision==='accept'?'accepted':'rejected',id,u.id).run();
-if(result.meta.changes&&decision==='accept'&&ctx?.waitUntil){const record=await env.DB.prepare('SELECT sender_id FROM luqyak_friend_requests WHERE id=?').bind(id).first();if(record?.sender_id){ctx.waitUntil(lkLiveSignal(env,record.sender_id));ctx.waitUntil(lkPushUser(env,record.sender_id,{title:'قبول طلب الصداقة',body:'تم قبول طلب الصداقة في لُقْيَاك',type:'friends',url:'/account-chat?peer='+encodeURIComponent(u.id),tag:'friend-accepted:'+id}));}}
+if(result.meta.changes&&decision==='accept'&&ctx?.waitUntil){const record=await env.DB.prepare('SELECT sender_id FROM luqyak_friend_requests WHERE id=?').bind(id).first();if(record?.sender_id){ctx.waitUntil(lkLiveSignal(env,record.sender_id));ctx.waitUntil(lkPushUser(env,record.sender_id,{title:'قبول طلب الصداقة',body:'تم قبول طلب الصداقة في لُقْيَاك',type:'friends',url:'/app?tab=chats',tag:'friend-accepted:'+id}));}}
 return result.meta.changes?out({ok:true}):out({error:'request_not_found'},404);
-}
-if(path==='/api/private/key'){
- const jwk=body?.public_jwk,fp=String(body?.fingerprint||'');
- if(!jwk||jwk.kty!=='EC'||jwk.crv!=='P-256'||!jwk.x||!jwk.y||jwk.d||! /^[a-f0-9]{64}$/.test(fp))return out({error:'invalid_key'},400);
- const canonical=JSON.stringify({crv:jwk.crv,kty:jwk.kty,x:jwk.x,y:jwk.y});
- const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))).map(v=>v.toString(16).padStart(2,'0')).join('');
- if(digest!==fp)return out({error:'fingerprint_mismatch'},400);
- const old=await env.DB.prepare('SELECT fingerprint FROM encrypted_public_keys WHERE user_id=?').bind(u.id).first();
- if(old&&old.fingerprint!==fp)return out({error:'key_already_registered',message:'لا يمكن استبدال المفتاح تلقائيًا حمايةً للمحادثات الموجودة'},409);
- await env.DB.prepare('INSERT OR IGNORE INTO encrypted_public_keys(user_id,public_jwk,fingerprint,created_at,updated_at) VALUES(?,?,?,?,?)').bind(u.id,canonical,fp,Date.now(),Date.now()).run();
- return out({ok:true,fingerprint:fp});
-}
-if(path==='/api/private/key/reset'){
- const jwk=body?.public_jwk,fp=String(body?.fingerprint||''),oldFp=String(body?.old_fingerprint||'');
- if(body?.confirm!=='RESET_PRIVATE_KEY'||!jwk||jwk.kty!=='EC'||jwk.crv!=='P-256'||!jwk.x||!jwk.y||jwk.d||!/^[a-f0-9]{64}$/.test(fp)||!/^[a-f0-9]{64}$/.test(oldFp)||oldFp===fp)return out({error:'invalid_key_reset'},400);
- const canonical=JSON.stringify({crv:jwk.crv,kty:jwk.kty,x:jwk.x,y:jwk.y});
- const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))).map(v=>v.toString(16).padStart(2,'0')).join('');
- if(digest!==fp)return out({error:'fingerprint_mismatch'},400);
- const result=await env.DB.prepare('UPDATE encrypted_public_keys SET public_jwk=?,fingerprint=?,updated_at=? WHERE user_id=? AND fingerprint=?').bind(canonical,fp,Date.now(),u.id,oldFp).run();
- return result.meta.changes===1?out({ok:true,fingerprint:fp}):out({error:'registered_key_changed',message:'تغير مفتاح الحساب. حدّث الصفحة قبل إعادة المحاولة'},409);
-}
-if(path==='/api/private/send'){
- const envelopes=body?.envelopes;
- if(!Array.isArray(envelopes)||envelopes.length<1||envelopes.length>20)return out({error:'invalid_recipients'},400);
- const me=await env.DB.prepare('SELECT fingerprint FROM encrypted_public_keys WHERE user_id=?').bind(u.id).first();
- if(!me)return out({error:'register_key_first'},409);
- const now=Date.now(),expires=now+86400000;
- const rate=await env.DB.prepare('SELECT COUNT(*) AS total FROM encrypted_delivery_queue WHERE sender_id=? AND created_at>?').bind(u.id,now-60000).first();
- if(rate.total+envelopes.length>80)return out({error:'rate_limited'},429);
- const existing=new Set(),pending=[];
- for(const e of envelopes){
-  if(typeof e?.recipient_id!=='string'||e.recipient_id===u.id||existing.has(e.recipient_id)||typeof e.envelope!=='string'||e.envelope.length>12000)return out({error:'invalid_envelope'},400);
-  existing.add(e.recipient_id);
-  let data;try{data=JSON.parse(e.envelope)}catch{return out({error:'invalid_envelope'},400)}
-  if(data.v!==1||data.algorithm!=='ECDH-P256-HKDF-AES256GCM'||typeof data.iv!=='string'||typeof data.salt!=='string'||typeof data.ciphertext!=='string'||data.ciphertext.length>10500||data.from_fingerprint!==me.fingerprint)return out({error:'invalid_ciphertext'},400);
-  const target=await env.DB.prepare("SELECT p.user_id FROM encrypted_public_keys p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND u.account_status='active' AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=? AND f.recipient_id=p.user_id) OR (f.recipient_id=? AND f.sender_id=p.user_id)))").bind(e.recipient_id,u.id,u.id).first();
-  if(!target)return out({error:'recipient_key_unavailable'},409);
-  const block=await env.DB.prepare('SELECT 1 x FROM lk_user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1').bind(u.id,e.recipient_id,e.recipient_id,u.id).first();if(block)return out({error:'blocked_user'},403);
-  pending.push({id:crypto.randomUUID(),recipient_id:e.recipient_id,envelope:e.envelope});
- }
- for(const e of pending){await env.DB.prepare('INSERT INTO encrypted_delivery_queue(id,sender_id,recipient_id,envelope,created_at,expires_at) VALUES(?,?,?,?,?,?)').bind(e.id,u.id,e.recipient_id,e.envelope,now,expires).run();try{await env.DB.prepare('INSERT INTO luqyak_message_events(id,sender_id,recipient_id,created_at) VALUES(?,?,?,?)').bind(e.id,u.id,e.recipient_id,now).run()}catch(err){console.error('Encrypted message notification metadata unavailable')}}
- if(ctx?.waitUntil){ctx.waitUntil(Promise.allSettled([...new Set(pending.map(x=>x.recipient_id))].map(id=>lkLiveSignal(env,id))));}
- if(ctx?.waitUntil){const peers=[...new Set(pending.map(x=>x.recipient_id))];ctx.waitUntil(Promise.allSettled(peers.map(id=>lkPushUser(env,id,{title:'رسالة جديدة في لُقْيَاك',body:'لديك رسالة مشفرة جديدة',type:'messages',url:'/private?peer='+encodeURIComponent(u.id),tag:'message:'+u.id}))));}
- return out({ok:true,queued:pending.length,expires_at:expires});
-}
-if(path==='/api/private/inbox'){
- await env.DB.prepare('DELETE FROM encrypted_delivery_queue WHERE expires_at<?').bind(Date.now()).run();
- const msgs=await env.DB.prepare("SELECT q.id,q.sender_id,q.envelope,q.created_at,p.public_jwk,p.fingerprint FROM encrypted_delivery_queue q LEFT JOIN encrypted_public_keys p ON p.user_id=q.sender_id WHERE q.recipient_id=? AND q.expires_at>? AND EXISTS(SELECT 1 FROM users sender WHERE sender.id=q.sender_id AND sender.account_status='active') AND EXISTS(SELECT 1 FROM luqyak_friend_requests f WHERE f.status='accepted' AND ((f.sender_id=q.sender_id AND f.recipient_id=q.recipient_id) OR (f.recipient_id=q.sender_id AND f.sender_id=q.recipient_id))) AND NOT EXISTS(SELECT 1 FROM lk_user_blocks b WHERE (b.blocker_id=q.sender_id AND b.blocked_id=q.recipient_id) OR (b.blocker_id=q.recipient_id AND b.blocked_id=q.sender_id)) ORDER BY q.created_at ASC LIMIT 100").bind(u.id,Date.now()).all();
- return out({messages:msgs.results.map(x=>({id:x.id,sender_id:x.sender_id,created_at:x.created_at,envelope:JSON.parse(x.envelope),sender_key:x.public_jwk?JSON.parse(x.public_jwk):null,sender_fingerprint:x.fingerprint}))});
-}
-if(path==='/api/private/ack'){
- const ids=body?.ids;
- if(!Array.isArray(ids)||ids.length>100||ids.some(x=>typeof x!=='string'||x.length>60))return out({error:'invalid_ids'},400);
- for(const id of ids)await env.DB.prepare('DELETE FROM encrypted_delivery_queue WHERE id=? AND recipient_id=?').bind(id,u.id).run();
- return out({ok:true});
 }
 return out({error:'not_found'},404);
 }
