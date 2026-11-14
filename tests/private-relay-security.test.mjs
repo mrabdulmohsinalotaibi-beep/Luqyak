@@ -61,3 +61,29 @@ test('encrypted send requires accepted friendship and active target',()=>{
  const source=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
  assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
 });
+
+test('encrypted key lookup denies a blocked peer even with accepted friendship',async()=>{
+ const peer='00000000-0000-4000-8000-000000000011';
+ for(const lookup of ['peer_id='+peer,'username=someone']){
+  let lookupQueried=false;
+  const env={DB:{prepare(sql){return {bind(...args){return {
+   async first(){
+    if(sql.includes('FROM auth_sessions'))return {id:actor,username:'tester'};
+    if(sql.includes('FROM users u JOIN encrypted_public_keys')){
+     lookupQueried=true;
+     assert.match(sql,/NOT EXISTS\(SELECT 1 FROM lk_user_blocks/);
+     assert.equal(args.length,6);
+     assert.equal(args[4],actor);
+     assert.equal(args[5],actor);
+     return null;
+    }
+    throw Error('Unexpected query: '+sql);
+   },
+   async run(){throw Error('Unexpected write')}
+  }}}}}};
+  const res=await worker.fetch(new Request(origin+'/api/private/lookup?'+lookup,{headers:{cookie}}),env,{waitUntil(){}});
+  assert.equal(res.status,200);
+  assert.equal((await res.json()).user,null);
+  assert.equal(lookupQueried,true);
+ }
+});
