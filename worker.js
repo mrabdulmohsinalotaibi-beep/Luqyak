@@ -621,6 +621,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
    const member=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(m.id,u.id).first();
    if(member?.status==='accepted')return {view:true,post:true,invited:false,owner:false};
    if(member?.status==='pending')return {view:false,post:false,invited:true,owner:false};
+   if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
    const claimed=await env.DB.prepare("SELECT l.can_view,l.can_upload FROM lk_guest_members g JOIN lk_guest_links l ON l.token_hash=g.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.meetup_id=? AND l.revoked_at IS NULL LIMIT 1").bind(u.id,m.id).first();
    if(claimed?.can_view===1)return {view:true,post:claimed.can_upload===1,invited:false,owner:false};
    if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
