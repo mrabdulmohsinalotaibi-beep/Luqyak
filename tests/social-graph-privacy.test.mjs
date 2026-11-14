@@ -71,11 +71,11 @@ test('relationship API is unavailable without login',async()=>{
  const res=await worker.fetch(new Request(origin+'/api/private/friends'),{},{waitUntil(){}});
  assert.equal(res.status,401);
 });
-test('self-only private labels appear in main chat and encrypted friend center',async()=>{
+test('private relationships are available without exposing the removed chat screen',async()=>{
  const app=await worker.fetch(new Request(origin+'/app'),{},{waitUntil(){}});
  const privatePage=await worker.fetch(new Request(origin+'/private'),{},{waitUntil(){}});
- const html=await app.text(),privateHtml=await privatePage.text();
- assert.match(html,/خاصة بك فقط/);
- assert.match(privateHtml,/دائرة علاقاتي — خاصة بي فقط/);
- assert.match(privateHtml,/أسماء علاقاتك وعددها لا يُعرضان في ملفات الآخرين/);
+ const html=await app.text();
+ assert.match(html,/دائرة أصدقائي/);
+ assert.match(html,/أصدقاؤك يظهرون لك وحدك/);
+ assert.equal(privatePage.status,302);
 });
