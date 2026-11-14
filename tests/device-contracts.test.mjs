@@ -60,3 +60,20 @@ test('redesigned app includes syntactically valid browser scripts',async()=>{
  assert.ok(scripts.length>0);
  for(const [,body] of scripts)if(body.trim())assert.doesNotThrow(()=>new vm.Script(body));
 });
+
+
+test('invited participants can join in one tap and share photos while only host ends meeting',async()=>{
+ const page=await worker.fetch(new Request(origin+'/app'),{},ctx);
+ const html=await page.text();
+ assert.match(html,/data-quick-rsvp/);
+ assert.match(html,/قبول والانضمام/);
+ assert.match(html,/data-action="album"/);
+ assert.match(html,/data-action="camera"/);
+ assert.match(html,/m\.isOwner&&!m\.ended/);
+ const source=(await import('node:fs/promises')).readFile;
+ const code=await source(new URL('../worker.js',import.meta.url),'utf8');
+ assert.match(code,/member\?\.status==='accepted'\)return \{view:true,post:true/);
+ assert.match(code,/if\(!csrf\(\)\|\|!access\.post\)return json\(\{error:'not_allowed'\},403\)/);
+ assert.match(code,/if\(!csrf\(\)\|\|!access\.owner\)return json\(\{error:'not_allowed'\},403\)/);
+ assert.match(code,/m\.created_at,u\.display_name FROM lk_meetup_members/);
+});
