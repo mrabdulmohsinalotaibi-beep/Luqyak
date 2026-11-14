@@ -53,7 +53,7 @@ test('Verified email change requires origin, OTP and updates email only after pr
 });
 
 test('Embedded account photo and email handlers parse as JavaScript', () => {
-  const decode = source => source.replace(/\\\\n/g, '\n').replace(/\\\\"/g, '"');
+  const decode = source => source.replace(/\\n/g, '\n').replace(/\\"/g, '"');
   const avatarStart = worker.indexOf("const picker=document.createElement('input')");
   const avatarEnd = worker.indexOf('const section=cover.nextElementSibling', avatarStart);
   assert.ok(avatarStart > 0 && avatarEnd > avatarStart);
