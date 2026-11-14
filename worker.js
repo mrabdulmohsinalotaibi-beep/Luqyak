@@ -433,8 +433,11 @@ async function lkAccountChat(request,env,path,ctx){
  const now=Date.now();
  const recent=await env.DB.prepare("SELECT COUNT(*) n FROM lk_account_messages WHERE sender_id=? AND created_at>?").bind(actor.id,now-60000).first();
  if((recent?.n||0)>=35)return reply({error:'rate_limited',message:'أرسلت رسائل كثيرة، حاول بعد دقيقة'},429);
- const existing=await env.DB.prepare('SELECT id,created_at FROM lk_account_messages WHERE sender_id=? AND client_id=?').bind(actor.id,clientId).first();
- if(existing)return reply({ok:true,id:existing.id,at:existing.created_at,existing:true});
+ const existing=await env.DB.prepare('SELECT id,created_at,recipient_id,body FROM lk_account_messages WHERE sender_id=? AND client_id=?').bind(actor.id,clientId).first();
+ if(existing){
+  if(existing.recipient_id!==peer||existing.body!==body)return reply({error:'client_id_conflict'},409);
+  return reply({ok:true,id:existing.id,at:existing.created_at,existing:true});
+ }
  const id=crypto.randomUUID();
  await env.DB.prepare('INSERT OR IGNORE INTO lk_account_messages(id,sender_id,recipient_id,body,created_at,client_id) VALUES(?,?,?,?,?,?)').bind(id,actor.id,peer,body,now,clientId).run();
  if(ctx?.waitUntil)ctx.waitUntil(lkLiveSignal(env,peer));

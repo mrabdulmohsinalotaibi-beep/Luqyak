@@ -105,3 +105,36 @@ test('account chat rate-limits and deduplicates sends, but is NOT cryptographica
 test.todo('two-device encryption and account-chat ciphertext verification requires dedicated test accounts');
 test.todo('closed-app iOS and Android push delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
+
+test('account chat refuses client-ID replay to a different recipient without writes',async()=>{
+  const actor='00000000-0000-4000-8000-000000000010';
+  const peer='00000000-0000-4000-8000-000000000011';
+  const other='00000000-0000-4000-8000-000000000012';
+  const clientId='00000000-0000-4000-8000-000000000013';
+  let writes=0;
+  const env={DB:{prepare(sql){
+    return {
+      bind(...args){
+        return {
+          async first(){
+            if(sql.includes('FROM auth_sessions'))return {id:actor,username:'tester',display_name:'Tester'};
+            if(sql.includes('FROM lk_user_blocks'))return null;
+            if(sql.includes('FROM luqyak_friend_requests'))return {x:1};
+            if(sql.includes('COUNT(*) n FROM lk_account_messages'))return {n:0};
+            if(sql.includes('SELECT id,created_at,recipient_id,body FROM lk_account_messages'))return {id:'existing',created_at:123,recipient_id:other,body:'hello'};
+            throw new Error('Unexpected query: '+sql);
+          },
+          async run(){writes++;throw new Error('Unexpected write')},
+        };
+      }
+    };
+  }}};
+  const response=await worker.fetch(new Request(origin+'/api/chat/send?peer='+peer,{
+    method:'POST',
+    headers:{'content-type':'application/json',origin,cookie:'__Host-luqyak_session='+('a'.repeat(64))},
+    body:JSON.stringify({text:'hello',client_id:clientId})
+  }),env,ctx);
+  assert.equal(response.status,409);
+  assert.equal((await response.json()).error,'client_id_conflict');
+  assert.equal(writes,0);
+});
