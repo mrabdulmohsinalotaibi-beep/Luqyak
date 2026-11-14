@@ -47,10 +47,8 @@ test('encrypted inbox filters inactive senders before ciphertext delivery',async
  assert.ok(seen);
 });
 
-test('ordinary chat shows in-conversation disclosure and link to encrypted conversation',async()=>{
- const res=await worker.fetch(new Request(base+'/account-chat'),{},context);
- assert.equal(res.status,200);
- const html=await res.text();
- assert.match(html,/هذه الرسائل القديمة محفوظة على الخادم وليست مشفّرة من الطرف إلى الطرف/);
- assert.match(html,/href="\/private"[^>]*>الانتقال إلى المحادثات الخاصة المشفّرة/);
+test('legacy ordinary chat screen is retired',async()=>{
+ const response=await worker.fetch(new Request(base+'/account-chat'),{},context);
+ assert.equal(response.status,302);
+ assert.match(response.headers.get('location')||'',/\/app\?tab=chats$/);
 });
