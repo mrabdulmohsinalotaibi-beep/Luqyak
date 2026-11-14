@@ -48,34 +48,16 @@ test('worker does not write user data during read-only public smoke tests',async
   assert.equal(response.status,200);
 });
 
-test('anonymous users cannot fetch private images or private/account chats',async()=>{
-  const paths=[
-    '/api/social/photo?id=00000000-0000-4000-8000-000000000001&photo=00000000-0000-4000-8000-000000000002',
-    '/api/chat/messages?peer=00000000-0000-4000-8000-000000000001',
-    '/api/private/status',
-    '/api/social/profile'
-  ];
-  for(const path of paths){
-    const response=await get(path);
-    assert.equal(response.status,401,path);
-    assert.match(response.headers.get('cache-control')||'',/no-store/,path);
+test('messaging endpoints are permanently disabled without touching user data',async()=>{
+ const paths=['/api/chat/list','/api/chat/messages','/api/chat/send','/api/chat/read','/api/private/status','/api/private/key','/api/private/lookup','/api/private/send','/api/private/inbox','/api/private/ack'];
+ for(const path of paths){
+  for(const method of ['GET','POST']){
+   const res=await worker.fetch(new Request(origin+path,{method,headers:method==='POST'?{'content-type':'application/json',origin}:undefined,body:method==='POST'?'{}':undefined}),{},ctx);
+   assert.equal(res.status,410,path+' '+method);
+   assert.equal((await res.json()).error,'feature_removed');
   }
+ }
 });
-
-test('anonymous users cannot submit meetup or chat data',async()=>{
-  const requests=[
-    ['/api/social/create',{title:'test',place:'test'}],
-    ['/api/chat/send',{text:'test'}],
-    ['/api/private/send',{ciphertext:'test'}]
-  ];
-  for(const [path,body] of requests){
-    const response=await worker.fetch(new Request(origin+path,{
-      method:'POST',headers:{'content-type':'application/json',origin},body:JSON.stringify(body)
-    }),{},ctx);
-    assert.equal(response.status,401,path);
-  }
-});
-
 
 test('server-backed legacy chat UI is retired',async()=>{
  const response=await get('/account-chat');
@@ -91,50 +73,15 @@ test('private image responses require authorized viewing and are not publicly ca
   assert.match(code,/member\?\.status==='accepted'/);
 });
 
-test('legacy account chat refuses plaintext sends and preserves private history route',async()=>{
-  const code=await (await import('node:fs/promises')).readFile(new URL('../worker.js',import.meta.url),'utf8');
-  assert.match(code,/encrypted_chat_required/);
-  assert.doesNotMatch(code,/INSERT OR IGNORE INTO lk_account_messages/);
-  assert.doesNotMatch(code,/const body=String\(payload\?\.text\|\|''\)\.trim\(\)/);
-  assert.match(code,/SELECT id,sender_id,recipient_id,body,created_at,read_at FROM lk_account_messages/);
+test('old account chat and encrypted relay implementation are absent',async()=>{
+ const code=await (await import('node:fs/promises')).readFile(new URL('../worker.js',import.meta.url),'utf8');
+ assert.doesNotMatch(code,/function lkAccountChat\(/);
+ assert.doesNotMatch(code,/if\(path==='\/api\/private\/send'\)/);
+ assert.doesNotMatch(code,/INSERT OR IGNORE INTO lk_account_messages/);
+ assert.match(code,/feature_removed/);
 });
-
-test.todo('two-device encryption and account-chat ciphertext verification requires dedicated test accounts');
-test.todo('closed-app iOS and Android push delivery needs physical device test');
+test.todo('closed-app iOS and Android notification delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
-
-test('legacy account chat refuses new plaintext sends without writes',async()=>{
-  const actor='00000000-0000-4000-8000-000000000010';
-  const peer='00000000-0000-4000-8000-000000000011';
-  const other='00000000-0000-4000-8000-000000000012';
-  const clientId='00000000-0000-4000-8000-000000000013';
-  let writes=0;
-  const env={DB:{prepare(sql){
-    return {
-      bind(...args){
-        return {
-          async first(){
-            if(sql.includes('FROM auth_sessions'))return {id:actor,username:'tester',display_name:'Tester'};
-            if(sql.includes('FROM lk_user_blocks'))return null;
-            if(sql.includes('FROM luqyak_friend_requests'))return {x:1};
-            if(sql.includes('COUNT(*) n FROM lk_account_messages'))return {n:0};
-            if(sql.includes('SELECT id,created_at,recipient_id,body FROM lk_account_messages'))return {id:'existing',created_at:123,recipient_id:other,body:'hello'};
-            throw new Error('Unexpected query: '+sql);
-          },
-          async run(){writes++;throw new Error('Unexpected write')},
-        };
-      }
-    };
-  }}};
-  const response=await worker.fetch(new Request(origin+'/api/chat/send?peer='+peer,{
-    method:'POST',
-    headers:{'content-type':'application/json',origin,cookie:'__Host-luqyak_session='+('a'.repeat(64))},
-    body:JSON.stringify({text:'hello',client_id:clientId})
-  }),env,ctx);
-  assert.equal(response.status,409);
-  assert.equal((await response.json()).error,'encrypted_chat_required');
-  assert.equal(writes,0);
-});
 
 test('in-app logo uses an alpha-safe existing SVG, without a baked-in white square',async()=>{
   const logo=await get('/brand/logo.svg');
@@ -165,33 +112,14 @@ test('social UI includes consistent responsive dimensions and OS motion accessib
   assert.match(html,/viewport-fit=cover/);
 });
 
-test('private relay rejects inactive session and missing or foreign request origin',async()=>{
-  const token='__Host-luqyak_session='+('a'.repeat(64));
-  for(const active of [false,true]){
-    const statements=[];
-    const env={DB:{prepare(sql){statements.push(sql);return {bind(){return {async first(){if(sql.includes('FROM auth_sessions'))return active?{id:'00000000-0000-4000-8000-000000000010',username:'tester'}:null;throw Error('unexpected database read')}}}}}}};
-    const status=await worker.fetch(new Request(origin+'/api/private/status',{headers:{cookie:token}}),env,ctx);
-    assert.equal(status.status,active?200:401);
-    assert.ok(statements.some(sql=>sql.includes("u.account_status='active'")));
-    if(!active)continue;
-    for(const extra of [{},{origin:'https://attacker.example'}]){
-      const res=await worker.fetch(new Request(origin+'/api/private/friends/request',{method:'POST',headers:{cookie:token,'content-type':'application/json',...extra},body:JSON.stringify({username:'some_friend'})}),env,ctx);
-      assert.equal(res.status,403);
-      assert.equal((await res.json()).error,'cross_site_request_rejected');
-    }
-  }
-});
-test('private key lookup requires an accepted active friendship',async()=>{
-  const queries=[];
-  const env={DB:{prepare(sql){queries.push(sql);return {bind(){return {async first(){if(sql.includes('FROM auth_sessions'))return {id:'00000000-0000-4000-8000-000000000010',username:'tester'};if(sql.includes('FROM users u JOIN encrypted_public_keys'))return null;throw Error('unexpected DB read')}}}}}}};
-  const res=await worker.fetch(new Request(origin+'/api/private/lookup?username=some_friend',{headers:{cookie:'__Host-luqyak_session='+('a'.repeat(64))}}),env,ctx);
-  assert.equal(res.status,200);
-  assert.equal((await res.json()).user,null);
-  assert.ok(queries.some(sql=>sql.includes("f.status='accepted'")&&sql.includes("u.account_status='active'")));
-});
-test('encrypted recipient selection requires accepted friend relationship',async()=>{
-  const source=(await import('node:fs')).readFileSync(new URL('../worker.js',import.meta.url),'utf8');
-  assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
+test('friendship endpoints remain protected by active sessions and same-origin requests',async()=>{
+ const token='__Host-luqyak_session='+('a'.repeat(64));
+ const env={DB:{prepare(sql){return {bind(){return {async first(){if(sql.includes('FROM auth_sessions'))return {id:'00000000-0000-4000-8000-000000000010',username:'tester'};throw Error('unexpected database read')}}}}}}};
+ for(const extra of [{},{origin:'https://attacker.example'}]){
+  const res=await worker.fetch(new Request(origin+'/api/private/friends/request',{method:'POST',headers:{cookie:token,'content-type':'application/json',...extra},body:JSON.stringify({username:'some_friend'})}),env,ctx);
+  assert.equal(res.status,403);
+  assert.equal((await res.json()).error,'cross_site_request_rejected');
+ }
 });
 
 test('blocked meetup owner cannot expose photo bytes or private details to the blocked account',async()=>{
