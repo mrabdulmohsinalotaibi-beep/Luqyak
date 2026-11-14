@@ -14,8 +14,10 @@ test('installed mobile app has safe-area and standalone metadata',async()=>{
   const html=await page.text();
   assert.match(html,/viewport-fit=cover/);
   assert.match(html,/apple-mobile-web-app-capable/);
-  assert.match(html,/luqyak-user-upload-20261114.png/);
-  assert.equal((await manifest.json()).display,'standalone');
+  assert.match(html,/src="\/brand\/logo\.svg"/);
+  const appManifest=await manifest.json();
+  assert.equal(appManifest.display,'standalone');
+  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-user-upload-20261114.png')));
 });
 
 test('meetup creation is a three-step wizard and accepts privacy choice',async()=>{
