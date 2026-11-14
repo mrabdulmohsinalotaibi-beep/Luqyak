@@ -81,7 +81,7 @@ test('account chat explicitly discloses that server-backed messages are not end-
   const response=await get('/account-chat');
   assert.equal(response.status,200);
   const html=await response.text();
-  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);
+  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);\n  assert.match(html,/id=\\\"encryptedChatLink\\\"/);\n  assert.doesNotMatch(html,/id=\\\"sendForm\\\"/);
   assert.match(html,/href="\/private"/);
   assert.match(response.headers.get('cache-control')||'',/no-store/);
 });
@@ -106,7 +106,7 @@ test.todo('two-device encryption and account-chat ciphertext verification requir
 test.todo('closed-app iOS and Android push delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
 
-test('account chat refuses client-ID replay to a different recipient without writes',async()=>{
+test('legacy account chat refuses new plaintext sends without writes',async()=>{
   const actor='00000000-0000-4000-8000-000000000010';
   const peer='00000000-0000-4000-8000-000000000011';
   const other='00000000-0000-4000-8000-000000000012';
@@ -135,7 +135,7 @@ test('account chat refuses client-ID replay to a different recipient without wri
     body:JSON.stringify({text:'hello',client_id:clientId})
   }),env,ctx);
   assert.equal(response.status,409);
-  assert.equal((await response.json()).error,'client_id_conflict');
+  assert.equal((await response.json()).error,'encrypted_chat_required');
   assert.equal(writes,0);
 });
 
