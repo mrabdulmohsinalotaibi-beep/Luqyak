@@ -77,15 +77,10 @@ test('anonymous users cannot submit meetup or chat data',async()=>{
 });
 
 
-test('account chat explicitly discloses that server-backed messages are not end-to-end encrypted',async()=>{
-  const response=await get('/account-chat');
-  assert.equal(response.status,200);
-  const html=await response.text();
-  assert.match(html,/ليست مشفّرة من الطرف إلى الطرف/);
-  assert.match(html,/encryptedChatLink/);
-  assert.doesNotMatch(html,/id="sendForm"/);
-  assert.match(html,/href="\/private"/);
-  assert.match(response.headers.get('cache-control')||'',/no-store/);
+test('server-backed legacy chat UI is retired',async()=>{
+ const response=await get('/account-chat');
+ assert.equal(response.status,302);
+ assert.match(response.headers.get('location')||'',/\/app\?tab=chats$/);
 });
 
 test('private image responses require authorized viewing and are not publicly cacheable',async()=>{
