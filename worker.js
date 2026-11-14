@@ -428,7 +428,8 @@ async function lkAccountChat(request,env,path,ctx){
   return reply({ok:true});
  }
  // Keep legacy chat history readable, but reject all new plaintext messages.
- return reply({error:'encrypted_chat_required',message:'الرسائل الجديدة تُرسل عبر المحادثات المشفّرة فقط'},409);\n
+ return reply({error:'encrypted_chat_required',message:'الرسائل الجديدة تُرسل عبر المحادثات المشفّرة فقط'},409);
+
 }
 
 async function privateRelay(request,env,path,ctx){
