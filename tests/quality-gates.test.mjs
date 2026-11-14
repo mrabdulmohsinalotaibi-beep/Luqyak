@@ -151,7 +151,7 @@ test('in-app logo uses an alpha-safe existing SVG, without a baked-in white squa
   assert.doesNotMatch(svg,/<rect\b[^>]*fill=["'](?:white|#fff(?:fff)?|#F7F1E9)["']/i);
   const app=await get('/app');
   assert.equal(app.status,200);
-  assert.match(await app.text(),/src="\/brand\/logo\.svg"/);
+  assert.match(await app.text(),/src="\/brand\/luqyak-logo-transparent\.svg\?v=20261114c"/);
 });
 
 test('account settings no longer expose per-device display preferences',async()=>{
