@@ -621,6 +621,8 @@ if(path==='/api/social/avatar'&&method==='POST'){
    const member=await env.DB.prepare('SELECT status FROM lk_meetup_members WHERE meetup_id=? AND user_id=?').bind(m.id,u.id).first();
    if(member?.status==='accepted')return {view:true,post:true,invited:false,owner:false};
    if(member?.status==='pending')return {view:false,post:false,invited:true,owner:false};
+   const claimed=await env.DB.prepare("SELECT l.can_view,l.can_upload FROM lk_guest_members g JOIN lk_guest_links l ON l.token_hash=g.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.meetup_id=? AND l.revoked_at IS NULL LIMIT 1").bind(u.id,m.id).first();
+   if(claimed?.can_view===1)return {view:true,post:claimed.can_upload===1,invited:false,owner:false};
    if(m.privacy==='private')return {view:false,post:false,invited:false,owner:false};
    if(m.privacy==='public')return {view:true,post:false,invited:false,owner:false};
    if(m.privacy==='friends'){
@@ -634,7 +636,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
  const info=async(m,access)=>{
    const [membersResponse,photosResponse,commentsResponse,likesResponse,host]=await Promise.all([
      env.DB.prepare("SELECT a.user_id,a.status,u.display_name,u.username FROM lk_meetup_members a JOIN users u ON u.id=a.user_id WHERE a.meetup_id=? AND (a.status='accepted' OR ?=1) ORDER BY a.created_at LIMIT 50").bind(m.id,access.owner?1:0).all(),
-     access.view?env.DB.prepare("SELECT p.id,p.uploader_id,p.created_at,u.display_name FROM lk_meetup_photos p JOIN users u ON u.id=p.uploader_id WHERE p.meetup_id=? ORDER BY p.created_at LIMIT 150").bind(m.id).all():Promise.resolve({results:[]}),
+     access.view?env.DB.prepare("SELECT p.id,p.uploader_id,p.created_at,u.display_name FROM lk_meetup_photos p JOIN users u ON u.id=p.uploader_id WHERE p.meetup_id=? UNION ALL SELECT p.id,NULL AS uploader_id,p.created_at,g.display_name FROM lk_guest_photos p JOIN lk_guest_members g ON g.id=p.guest_id WHERE p.meetup_id=? AND p.status='approved' ORDER BY created_at LIMIT 150").bind(m.id,m.id).all():Promise.resolve({results:[]}),
      access.view?env.DB.prepare("SELECT c.id,c.author_id,c.body,c.created_at,u.display_name FROM lk_meetup_comments c JOIN users u ON u.id=c.author_id WHERE c.meetup_id=? ORDER BY c.created_at DESC LIMIT 100").bind(m.id).all():Promise.resolve({results:[]}),
      access.view?env.DB.prepare("SELECT user_id FROM lk_meetup_likes WHERE meetup_id=? LIMIT 1000").bind(m.id).all():Promise.resolve({results:[]}),
      env.DB.prepare("SELECT display_name FROM users WHERE id=?").bind(m.owner_id).first()
@@ -643,7 +645,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
    return {id:m.id,title:m.title,place:m.place,time:m.starts_at,privacy:m.privacy,note:access.view?m.note:'',lat:access.view?m.lat:null,lng:access.view?m.lng:null,ended:!!m.ended,host:host?.display_name||'منشئ اللقاء',isOwner:access.owner,canPost:access.post,isInvited:access.invited,members:access.view||access.owner?membersResponse.results:[],photos,comments,likes:likes.length,liked:likes.some(x=>x.user_id===u.id)};
  };
  if(path==='/api/social/meetups'&&method==='GET'){
-   const rows=await env.DB.prepare("SELECT * FROM lk_meetups WHERE privacy='public' OR owner_id=? OR id IN (SELECT meetup_id FROM lk_meetup_members WHERE user_id=?) OR (privacy='friends' AND owner_id IN (SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?))) ORDER BY created_at DESC LIMIT 80").bind(u.id,u.id,u.id,u.id,u.id).all();
+   const rows=await env.DB.prepare("SELECT * FROM lk_meetups WHERE privacy='public' OR owner_id=? OR id IN (SELECT meetup_id FROM lk_meetup_members WHERE user_id=?) OR id IN (SELECT l.meetup_id FROM lk_guest_links l JOIN lk_guest_members g ON g.token_hash=l.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.revoked_at IS NULL AND l.can_view=1) OR (privacy='friends' AND owner_id IN (SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?))) ORDER BY created_at DESC LIMIT 80").bind(u.id,u.id,u.id,u.id,u.id,u.id).all();
    const meetings=rows.results||[];
    if(!meetings.length)return json({items:[]});
    const ids=meetings.map(x=>x.id), placeholders=ids.map(()=>'?').join(',');
@@ -672,6 +674,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
      else if(status==='accepted'){view=true;post=true}
      else if(status==='pending'){invited=true}
      else if(m.privacy==='public'||(m.privacy==='friends'&&friendIds.has(m.owner_id))){view=true}
+     if(!view&&!invited){const claimed=await env.DB.prepare("SELECT l.can_view,l.can_upload FROM lk_guest_members g JOIN lk_guest_links l ON l.token_hash=g.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.meetup_id=? AND l.revoked_at IS NULL LIMIT 1").bind(u.id,m.id).first();if(claimed?.can_view===1){view=true;post=claimed.can_upload===1}}
      if(!view&&!invited)continue;
      const pc=photoBy.get(m.id),mc=countBy.get(m.id);
      output.push({
@@ -794,7 +797,7 @@ if(path==='/api/social/rsvp'&&method==='POST'){
  if(path==='/api/social/photo'&&method==='GET'){
    if(!access.view)return json({error:'not_found'},404);
    const photoId=url.searchParams.get('photo');
-   const p=/^[a-f0-9-]{36}$/.test(photoId||'')?await env.DB.prepare('SELECT object_key FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first():null;
+   const p=/^[a-f0-9-]{36}$/.test(photoId||'')?await env.DB.prepare("SELECT object_key FROM lk_meetup_photos WHERE id=? AND meetup_id=? UNION ALL SELECT object_key FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved' LIMIT 1").bind(photoId,id,photoId,id).first():null;
    if(!p)return json({error:'not_found'},404);
    const obj=await env.PHOTOS.get(p.object_key);if(!obj)return json({error:'not_found'},404);
    return new Response(obj.body,{headers:{'content-type':'image/jpeg','cache-control':'private, no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; sandbox"}});
