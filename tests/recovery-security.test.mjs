@@ -27,7 +27,7 @@ test('recovery module is served as no-store JavaScript and encrypted chats are t
  assert.match(page,/crypto\/recovery\.mjs/);
  assert.match(page,/lkRecoveryPassword/);
  const {Script}=await import('node:vm');
- for(const script of page.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/g))new Script(script[1]);
+ for(const body of page.split('<script>').slice(1)){const script=body.split('</script>')[0];new Script(script)}
 });
 test('two isolated synthetic accounts recover only their own key, rooms and messages',async()=>{
  const a=await newIdentity(accountA),b=await newIdentity(accountB);
