@@ -41,7 +41,7 @@ test('two signed-in accounts can each read only their own accepted/pending relat
  const other=await get('/api/private/friends',bob,cookieB);
  assert.equal(own.status,200);
  assert.equal(other.status,200);
- assert.match(own.headers.get('cache-control')||'','no-store');
+ assert.match(own.headers.get('cache-control')||'',/no-store/);
  assert.equal(own.headers.get('content-type')?.includes('application/json'),true);
  const a=await own.json(),b=await other.json();
  assert.deepEqual(a.items.map(x=>x.peer_id),[carol]);
