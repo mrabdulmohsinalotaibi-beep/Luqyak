@@ -22,6 +22,21 @@ test('all personal photos display in a uniform square gallery without six-photo 
   assert.match(code,/className='lk-my-grid'/);
   assert.match(worker,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
+test('Instagram-style memories layout has profile summary, circular highlight albums and a 3-column gallery in the actual app page',()=>{
+  const appStart=worker.indexOf("if(path==='/app')return new Response(");
+  const appEnd=worker.indexOf("if(path==='/notifications')return new Response(",appStart);
+  assert.ok(appStart>=0 && appEnd>appStart,'App page must exist');
+  const appPage=worker.slice(appStart,appEnd);
+  assert.match(code,/lk-my-profile-summary/);
+  assert.match(code,/lk-my-stats/);
+  assert.match(code,/lk-my-highlights/);
+  assert.match(code,/lk-my-album-circle/);
+  assert.match(appPage,/\.lk-my-memories \.lk-my-grid\{display:grid!important;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)!important/);
+  assert.match(appPage,/\.lk-my-memories \.lk-my-photo>img\{position:absolute!important/);
+  assert.match(appPage,/aspect-ratio:1\/1!important/);
+  assert.match(appPage,/object-fit:cover!important/);
+});
+
 test('viewer preserves guarded photo endpoint, swipe and keyboard navigation',()=>{
   assert.match(code,/api\/social\/photo\?id=/);
   assert.match(code,/api\/social\/my-photos/);
