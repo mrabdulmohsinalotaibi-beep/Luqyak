@@ -784,15 +784,16 @@ if(path==='/api/social/avatar'&&method==='POST'){
 
 
  const info=async(m,access)=>{
-   const [membersResponse,photosResponse,commentsResponse,likesResponse,host]=await Promise.all([
+   const [membersResponse,photosResponse,commentsResponse,likesResponse,host,selectedCover]=await Promise.all([
      env.DB.prepare("SELECT a.user_id,a.status,u.display_name,u.username FROM lk_meetup_members a JOIN users u ON u.id=a.user_id WHERE a.meetup_id=? AND (a.status='accepted' OR ?=1) ORDER BY a.created_at LIMIT 50").bind(m.id,access.owner?1:0).all(),
      access.view?env.DB.prepare("SELECT id,uploader_id,created_at,display_name FROM (SELECT p.id,p.uploader_id,p.created_at,u.display_name FROM lk_meetup_photos p JOIN users u ON u.id=p.uploader_id WHERE p.meetup_id=? UNION ALL SELECT p.id,NULL AS uploader_id,p.created_at,g.display_name FROM lk_guest_photos p JOIN lk_guest_members g ON g.id=p.guest_id WHERE p.meetup_id=? AND p.status='approved') ORDER BY created_at,id LIMIT 150").bind(m.id,m.id).all():Promise.resolve({results:[]}),
      access.view?env.DB.prepare("SELECT c.id,c.author_id,c.body,c.created_at,u.display_name FROM lk_meetup_comments c JOIN users u ON u.id=c.author_id WHERE c.meetup_id=? ORDER BY c.created_at DESC LIMIT 100").bind(m.id).all():Promise.resolve({results:[]}),
      access.view?env.DB.prepare("SELECT user_id FROM lk_meetup_likes WHERE meetup_id=? LIMIT 1000").bind(m.id).all():Promise.resolve({results:[]}),
-     env.DB.prepare("SELECT display_name FROM users WHERE id=?").bind(m.owner_id).first()
+     env.DB.prepare("SELECT display_name FROM users WHERE id=?").bind(m.owner_id).first(),
+     env.DB.prepare('SELECT photo_id FROM lk_meetup_covers WHERE meetup_id=?').bind(m.id).first()
    ]);
    const photos=photosResponse.results||[],comments=commentsResponse.results||[],likes=likesResponse.results||[];
-   return {id:m.id,title:m.title,place:m.place,time:m.starts_at,privacy:m.privacy,occasion_type:m.occasion_type||'meetup',note:access.view?m.note:'',lat:access.view?m.lat:null,lng:access.view?m.lng:null,ended:!!m.ended,host:host?.display_name||'منشئ اللقاء',isOwner:access.owner,canPost:access.post,isInvited:access.invited,members:access.view||access.owner?membersResponse.results:[],photos,comments,likes:likes.length,liked:likes.some(x=>x.user_id===u.id)};
+   return {id:m.id,title:m.title,place:m.place,time:m.starts_at,privacy:m.privacy,occasion_type:m.occasion_type||'meetup',note:access.view?m.note:'',lat:access.view?m.lat:null,lng:access.view?m.lng:null,ended:!!m.ended,host:host?.display_name||'منشئ اللقاء',isOwner:access.owner,canPost:access.post,isInvited:access.invited,members:access.view||access.owner?membersResponse.results:[],photos,coverPhotoId:photos.some(p=>p.id===selectedCover?.photo_id)?selectedCover.photo_id:(photos[0]?.id||null),comments,likes:likes.length,liked:likes.some(x=>x.user_id===u.id)};
  };
  if(path==='/api/social/meetups'&&method==='GET'){
    const rows=await env.DB.prepare("SELECT * FROM lk_meetups WHERE privacy='public' OR owner_id=? OR id IN (SELECT meetup_id FROM lk_meetup_members WHERE user_id=?) OR id IN (SELECT l.meetup_id FROM lk_guest_links l JOIN lk_guest_members g ON g.token_hash=l.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.revoked_at IS NULL AND l.can_view=1) OR (privacy='friends' AND owner_id IN (SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?))) ORDER BY created_at DESC LIMIT 80").bind(u.id,u.id,u.id,u.id,u.id,u.id).all();
@@ -804,7 +805,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
      env.DB.prepare('SELECT meetup_id,status FROM lk_meetup_members WHERE user_id=? AND meetup_id IN ('+placeholders+')').bind(u.id,...ids).all(),
      env.DB.prepare("SELECT CASE WHEN sender_id=? THEN recipient_id ELSE sender_id END AS peer_id FROM luqyak_friend_requests WHERE status='accepted' AND (sender_id=? OR recipient_id=?)").bind(u.id,u.id,u.id).all(),
      env.DB.prepare('SELECT id,display_name FROM users WHERE id IN ('+ownerMarks+')').bind(...ownerIds).all(),
-     env.DB.prepare("WITH all_photos AS (SELECT meetup_id,id,created_at FROM lk_meetup_photos UNION ALL SELECT meetup_id,id,created_at FROM lk_guest_photos WHERE status='approved') SELECT p.meetup_id,COUNT(*) AS total,(SELECT p2.id FROM all_photos p2 WHERE p2.meetup_id=p.meetup_id ORDER BY p2.created_at,p2.id LIMIT 1) AS cover_id FROM all_photos p WHERE p.meetup_id IN ("+placeholders+") GROUP BY p.meetup_id").bind(...ids).all(),
+     env.DB.prepare("WITH all_photos AS (SELECT meetup_id,id,created_at FROM lk_meetup_photos UNION ALL SELECT meetup_id,id,created_at FROM lk_guest_photos WHERE status='approved') SELECT p.meetup_id,COUNT(*) AS total,(SELECT p2.id FROM all_photos p2 WHERE p2.meetup_id=p.meetup_id ORDER BY CASE WHEN p2.id=(SELECT c.photo_id FROM lk_meetup_covers c WHERE c.meetup_id=p.meetup_id) THEN 0 ELSE 1 END,p2.created_at,p2.id LIMIT 1) AS cover_id FROM all_photos p WHERE p.meetup_id IN ("+placeholders+") GROUP BY p.meetup_id").bind(...ids).all(),
      env.DB.prepare("SELECT meetup_id,COUNT(*) AS all_count,SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) AS accepted_count FROM lk_meetup_members WHERE meetup_id IN ("+placeholders+") GROUP BY meetup_id").bind(...ids).all(),
      env.DB.prepare('SELECT blocker_id,blocked_id FROM lk_user_blocks WHERE blocker_id=? OR blocked_id=?').bind(u.id,u.id).all(),
      env.DB.prepare("SELECT l.meetup_id,l.can_view,l.can_upload FROM lk_guest_links l JOIN lk_guest_members g ON g.token_hash=l.token_hash WHERE g.claimed_user_id=? AND g.status='accepted' AND l.revoked_at IS NULL").bind(u.id).all()
@@ -835,7 +836,7 @@ if(path==='/api/social/avatar'&&method==='POST'){
        host:hostBy.get(m.owner_id)||'منشئ اللقاء',
        isOwner:owner,canPost:post,isInvited:invited,
        members:[],memberCount:view?(owner?Number(mc?.all_count||0):Number(mc?.accepted_count||0)):0,
-       photos:view&&pc?.cover_id?[{id:pc.cover_id}]:[],photoCount:view?Number(pc?.total||0):0,
+       photos:view&&pc?.cover_id?[{id:pc.cover_id}]:[],coverPhotoId:view?pc?.cover_id||null:null,photoCount:view?Number(pc?.total||0):0,
        comments:[],likes:0,liked:false
      });
    }
@@ -873,7 +874,17 @@ if(path==='/api/social/create'&&method==='POST'){
  }
  const id=url.searchParams.get('id');
  const meetup=await getMeetup(id),access=await can(meetup);
- if(path==='/api/social/meetup'&&method==='GET'){
+ /* LUQYAK_COVER_API_V1 */if(path==='/api/social/cover'&&method==='POST'){
+ if(!csrf()||!access.owner)return json({error:'not_allowed'},403);
+ let data;try{data=await body()}catch{return json({error:'invalid_body'},400)}
+ const photoId=String(data.photo||'');
+ if(!/^[a-f0-9-]{36}$/.test(photoId))return json({error:'invalid_photo'},400);
+ const exists=await env.DB.prepare("SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=? UNION ALL SELECT id FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved' LIMIT 1").bind(photoId,id,photoId,id).first();
+ if(!exists)return json({error:'not_found'},404);
+ await env.DB.prepare("INSERT INTO lk_meetup_covers(meetup_id,photo_id,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(meetup_id) DO UPDATE SET photo_id=excluded.photo_id,updated_at=excluded.updated_at").bind(id,photoId).run();
+ return json({ok:true,coverPhotoId:photoId});
+}
+if(path==='/api/social/meetup'&&method==='GET'){
    if(!meetup||(!access.view&&!access.invited))return json({error:'not_found'},404);
    return json({item:await info(meetup,access)});
  }
@@ -901,6 +912,7 @@ if(path==='/api/social/delete'&&method==='POST'){
   statements.push(env.DB.prepare('DELETE FROM lk_photo_reactions WHERE photo_id=?').bind(x));
   statements.push(env.DB.prepare('DELETE FROM lk_photo_comments WHERE photo_id=?').bind(x));
  }
+ statements.push(env.DB.prepare('DELETE FROM lk_meetup_covers WHERE meetup_id=?').bind(id));
  for(const table of ['lk_meetup_likes','lk_meetup_comments','lk_meetup_members','lk_meetup_photos']){
   statements.push(env.DB.prepare('DELETE FROM '+table+' WHERE meetup_id=?').bind(id));
  }
@@ -965,6 +977,7 @@ if(path==='/api/social/delete-photo'&&method==='POST'){
  const statements=[
    env.DB.prepare('DELETE FROM lk_photo_reactions WHERE photo_id=?').bind(photoId),
    env.DB.prepare('DELETE FROM lk_photo_comments WHERE photo_id=?').bind(photoId),
+   env.DB.prepare('DELETE FROM lk_meetup_covers WHERE meetup_id=? AND photo_id=?').bind(id,photoId),
    env.DB.prepare('DELETE FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id)
  ];
  await env.DB.batch(statements);
