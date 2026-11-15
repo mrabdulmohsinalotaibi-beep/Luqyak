@@ -15,6 +15,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Diagnose app inline scripts
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=fs.readFileSync('worker.js','utf8');
+          const a=s.indexOf("if(path==='/app')return new Response(")+"if(path==='/app')return new Response(".length;
+          const b=s.indexOf(",{headers:",a);
+          const h=JSON.parse(s.slice(a,b));
+          const scripts=[...h.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+          fs.writeFileSync('/tmp/luqyak-inline-3.js',scripts[2][1]);
+          NODE
+          node --check /tmp/luqyak-inline-3.js 2>&1 | tail -c 2200
       - name: Check syntax with concise failure logs
         run: |
           npm run check > /tmp/luqyak-check.log 2>&1 || { tail -c 2500 /tmp/luqyak-check.log; exit 1; }
