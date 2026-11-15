@@ -15,4 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm run validate
+      - name: Check syntax with concise failure logs
+        run: |
+          npm run check > /tmp/luqyak-check.log 2>&1 || { tail -c 2500 /tmp/luqyak-check.log; exit 1; }
+          npm test
