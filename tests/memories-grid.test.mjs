@@ -16,10 +16,10 @@ test('personal memories module parses as JavaScript',()=>{
   assert.doesNotThrow(()=>new Function(code.replace('export function mountMyMemories','function mountMyMemories')+';return mountMyMemories;'));
 });
 test('all personal photos display in a uniform square gallery without six-photo pager',()=>{
-  assert.match(code,/visibleCount=48/);
-  assert.match(code,/photos\.slice\(0,visibleCount\)/);
+  assert.match(code,/const perPage=Number\.MAX_SAFE_INTEGER/);
+  assert.match(code,/photos\.slice\(page\*perPage,\(page\+1\)\*perPage\)/);
   assert.doesNotMatch(code,/lkMyPager|const perPage=6/);
-  assert.match(worker,/Uniform personal memories grid/);
+  assert.match(code,/className='lk-my-grid'/);
   assert.match(worker,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
 test('viewer preserves guarded photo endpoint, swipe and keyboard navigation',()=>{
@@ -29,5 +29,5 @@ test('viewer preserves guarded photo endpoint, swipe and keyboard navigation',()
   assert.match(code,/aria-modal/);
   assert.match(code,/touchstart/);
   assert.match(code,/ArrowLeft/);
-  assert.match(code,/lk-my-photo-menu/);
+  assert.match(code,/function openViewer\(group,starting\)/);
 });
