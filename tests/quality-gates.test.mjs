@@ -207,3 +207,25 @@ test('square 1:1 crop editor is served and required for camera and photo-library
  assert.ok(guest.includes('openSquarePhotoEditor(f)'));
  assert.ok(guest.includes("script-src 'self' 'unsafe-inline'"));
 });
+
+
+test('Memories shows six personal photos per page and rectangular meetup albums',async()=>{
+ const page=await get('/app');
+ assert.equal(page.status,200);
+ const html=await page.text();
+ assert.ok(html.includes('myMemoriesRoot'));
+ assert.ok(html.includes("import('/src/my-memories.js')"));
+ const script=await get('/src/my-memories.js');
+ assert.equal(script.status,200);
+ const code=await script.text();
+ for(const keyword of ['const perPage=6','lk-my-grid','lk-my-album-tab','touchstart','touchend','/api/social/my-photos','/api/social/meetup?id=']){
+   assert.ok(code.includes(keyword),'Missing Memories feature: '+keyword);
+ }
+});
+test('personal-photo API filters upload ownership and reuses photo permission checks',async()=>{
+ const code=await (await import('node:fs/promises')).readFile(new URL('../worker.js',import.meta.url),'utf8');
+ assert.ok(code.includes("if(path==='/api/social/my-photos'&&method==='GET')"));
+ assert.ok(code.includes('FROM lk_meetup_photos p WHERE p.uploader_id=?'));
+ assert.ok(code.includes("g.claimed_user_id=? AND g.status='accepted'"));
+ assert.ok(code.includes('const permissions=await can(m)'));
+});
