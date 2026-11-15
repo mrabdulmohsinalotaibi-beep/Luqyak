@@ -46,3 +46,9 @@ test('viewer preserves guarded photo endpoint, swipe and keyboard navigation',()
   assert.match(code,/ArrowLeft/);
   assert.match(code,/function openViewer\(group,starting\)/);
 });
+
+test('tapping a meetup highlight opens its photos directly in the viewer',()=>{
+  assert.match(code,/b\.onclick=async\(\)=>\{/);
+  assert.match(code,/if\(group\.length\)openViewer\(group,0\)/);
+  assert.match(code,/api\/social\/meetup\?id=/);
+});
