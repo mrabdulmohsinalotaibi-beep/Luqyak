@@ -24,7 +24,7 @@ for (const path of ['/app', '/notifications']) {
       const attributes = match[1] || '';
       if (/\btype\s*=\s*["'](?:module|application\/json)["']/i.test(attributes)) continue;
       assert.doesNotThrow(
-        () => new Script(match[2], { filename: `${path}:inline-script-${index + 1}` }),
+        () => { try { new Script(match[2], { filename: `${path}:inline-script-${index + 1}` }); } catch(err) { console.error(String(err.stack).slice(0,1600)); throw err; } },
         `Broken inline script ${index + 1} on ${path}`
       );
     }
