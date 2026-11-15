@@ -9,7 +9,7 @@ const start=worker.indexOf(marker)+marker.length;
 const end=worker.indexOf(",{headers:",start);
 assert.ok(start>=marker.length&&end>start);
 const html=JSON.parse(worker.slice(start,end));
-const scripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)];
+const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
 test('all inline scripts are valid JS',()=>{for(const [,code] of scripts)assert.doesNotThrow(()=>new Script(code))});
 test('olive-gold home is photo-led and scrollable horizontally',()=>{
  assert.match(html,/LUQYAK_HOME_PREMIUM_2026_11_16/);
