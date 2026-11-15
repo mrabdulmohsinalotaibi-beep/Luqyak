@@ -633,6 +633,19 @@ if(path==='/api/social/avatar'&&method==='POST'){
    return {view:false,post:false,invited:false,owner:false};
  };
  const getMeetup=async id=>/^[a-f0-9-]{36}$/.test(id||'')?env.DB.prepare('SELECT * FROM lk_meetups WHERE id=?').bind(id).first():null;
+ if(path==='/api/social/my-photos'&&method==='GET'){
+   // Only images uploaded by the signed-in member, including guest contributions claimed to this account.
+   // All item links are verified through the same membership and privacy rules used by the photo endpoint.
+   const result=await env.DB.prepare("SELECT id,meetup_id,created_at FROM (SELECT p.id,p.meetup_id,p.created_at FROM lk_meetup_photos p WHERE p.uploader_id=? UNION ALL SELECT p.id,p.meetup_id,p.created_at FROM lk_guest_photos p JOIN lk_guest_members g ON g.id=p.guest_id WHERE g.claimed_user_id=? AND g.status='accepted' AND p.status='approved') ORDER BY created_at DESC,id DESC LIMIT 180").bind(u.id,u.id).all();
+   const albumAuth=new Map(),items=[];
+   for(const p of result.results||[]){
+     let allowed=albumAuth.get(p.meetup_id);
+     if(allowed===undefined){const m=await getMeetup(p.meetup_id);const permissions=await can(m);allowed=permissions.view?{title:m.title}:null;albumAuth.set(p.meetup_id,allowed)}
+     if(allowed)items.push({id:p.id,meetup_id:p.meetup_id,created_at:p.created_at,title:allowed.title});
+   }
+   return json({items});
+ }
+
 
  const info=async(m,access)=>{
    const [membersResponse,photosResponse,commentsResponse,likesResponse,host]=await Promise.all([
