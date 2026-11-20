@@ -34,8 +34,14 @@ export async function saveOwnerPhoto({id,meetupId,plain,sha256,envelope}){
   sourceSha256:sha256||null,savedAt:Date.now()};
  const db=await openOwnerStore();
  try{
-  const tx=db.transaction(['photos'],'readwrite'),done=transactionDone(tx);
-  tx.objectStore('photos').put(record);await done;
+  const tx=db.transaction(['photos'],'readwrite'),done=transactionDone(tx),store=tx.objectStore('photos');
+  const existing=await requestDone(store.get(id));
+  if(existing){
+   if(!existing.encrypted||existing.meetupId!==meetupId||existing.ciphertextSha256!==envelope.sha256){
+    throw new Error('Photo ID collision: existing local photo preserved');
+   }
+  }else store.add(record);
+  await done;
   const verify=db.transaction(['photos'],'readonly');
   const item=await requestDone(verify.objectStore('photos').get(id));
   if(!item?.encrypted||item.meetupId!==meetupId||item.bytes?.size!==cipher.byteLength)throw new Error('Local encrypted storage verification failed');
