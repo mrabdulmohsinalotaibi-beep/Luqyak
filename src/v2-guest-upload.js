@@ -14,14 +14,23 @@ async function init(){
  try{
   const info=await fetchJson('/api/v2/inbox/info?token='+encodeURIComponent(token));
   $('meetup').textContent='لقاء خاص — أرسل صورك لصاحب اللقاء';
-  $('file').disabled=false;$('submit').disabled=false;
+  $('file').disabled=false;$('camera').disabled=false;$('submit').disabled=false;
   $('submit').onclick=async()=>{
-   const files=[...$('file').files];if(!files.length)return msg('اختر صورة أولًا');
+   const files=[...$('file').files,...$('camera').files];if(!files.length)return msg('اختر صورة أولًا');
    $('submit').disabled=true;let done=0;
    for(const f of files){
     try{
-     if(!['image/jpeg','image/png','image/webp'].includes(f.type))throw Error('نوع الصورة غير مدعوم، اختر JPG أو PNG أو WebP');
-     const sealed=await sealPhoto({meetupId:info.meetup_id,photoBytes:await f.arrayBuffer(),recipientPublicKey:Uint8Array.from(atob(info.public_key_spki),c=>c.charCodeAt(0))});
+     let photo=f;
+     if(!['image/jpeg','image/png','image/webp'].includes(f.type)){
+      if(!['image/heic','image/heif','image/heic-sequence','image/heif-sequence',''].includes(f.type))throw Error('نوع الصورة غير مدعوم');
+      if(!('createImageBitmap' in globalThis))throw Error('هذه الصورة تحتاج إلى تحويلها إلى JPG قبل الإرسال');
+      const im=await createImageBitmap(f);
+      const canvas=document.createElement('canvas');const scale=Math.min(1,2200/Math.max(im.width,im.height));
+      canvas.width=Math.round(im.width*scale);canvas.height=Math.round(im.height*scale);
+      canvas.getContext('2d').drawImage(im,0,0,canvas.width,canvas.height);im.close();
+      photo=await new Promise((ok,no)=>canvas.toBlob(b=>b?ok(b):no(Error('تعذر تجهيز الصورة')),'image/jpeg',0.85));
+     }
+     const sealed=await sealPhoto({meetupId:info.meetup_id,photoBytes:await photo.arrayBuffer(),recipientPublicKey:Uint8Array.from(atob(info.public_key_spki),c=>c.charCodeAt(0))});
      const r=await fetch('/api/v2/inbox/upload?token='+encodeURIComponent(token),{
       method:'POST',credentials:'same-origin',headers:{
        'content-type':'application/octet-stream','x-luqyak-photo-id':sealed.photoId,'x-luqyak-device-id':info.device_id,
@@ -30,7 +39,7 @@ async function init(){
      });
      const result=await r.json().catch(()=>({}));
      if(!r.ok)throw Error(result.error||'تعذر الإرسال');
-     done++;msg('وصل للوسيط المشفّر: '+done+' من '+files.length+' صورة. ينتظر الحفظ في جهاز صاحب اللقاء.');
+     done++;$('camera').value='';msg('وصل للوسيط المشفّر: '+done+' من '+files.length+' صورة. ينتظر الحفظ في جهاز صاحب اللقاء.');
     }catch(e){msg('تم إرسال '+done+' من '+files.length+'. تعذر إرسال «'+f.name+'»: '+e.message);break}
    }
    $('submit').disabled=false;
