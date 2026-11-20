@@ -13,14 +13,19 @@ export async function openOwnerStore(){
 export async function saveOwnerPhoto({id,meetupId,plain,sha256}){
  const db=await openOwnerStore();
  try{
+  const payloadHash=await crypto.subtle.digest('SHA-256',plain);
+  const payloadHex=Array.from(new Uint8Array(payloadHash),x=>x.toString(16).padStart(2,'0')).join('');
   const tx=db.transaction(['photos'],'readwrite');
   const done=transactionDone(tx);
-  tx.objectStore('photos').put({id,meetupId,bytes:new Blob([plain]),sha256,savedAt:Date.now()});
+  tx.objectStore('photos').put({id,meetupId,bytes:new Blob([plain]),sha256,plaintextSha256:payloadHex,savedAt:Date.now()});
   await done;
   // Confirm persisted data can be read after the write transaction has committed.
   const verify=db.transaction(['photos'],'readonly');
   const item=await requestDone(verify.objectStore('photos').get(id));
   if(!item?.bytes||item.bytes.size!==plain.byteLength||item.sha256!==sha256)throw new Error('Local storage verification failed');
+  const check=await crypto.subtle.digest('SHA-256',await item.bytes.arrayBuffer());
+  const checkHex=Array.from(new Uint8Array(check),x=>x.toString(16).padStart(2,'0')).join('');
+  if(checkHex!==payloadHex)throw new Error('Local storage content integrity mismatch');
   return item;
  }finally{db.close()}
 }
