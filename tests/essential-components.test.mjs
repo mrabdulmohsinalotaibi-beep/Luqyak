@@ -37,8 +37,8 @@ test('essential header keeps logo, notification and account paths',()=>{
 test('working but secondary account and settings features remain reachable',()=>{
  const account=between('function account(){','async function lkRunHealth(){');
  const settings=between('function accountSettings(){','function ');
- assert.match(account,/data-action=\\"chats/);
- assert.match(account,/data-action=\\"settings/);
+ assert.match(account,/link\('chats'/);
+ assert.match(account,/link\('settings'/);
  assert.match(account,/href=\\"\/notifications/);
  assert.match(settings,/id=\\"openMigration/);
  assert.match(settings,/id=\\"lkDeletionRequest/);
