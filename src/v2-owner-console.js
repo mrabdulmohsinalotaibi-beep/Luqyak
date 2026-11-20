@@ -27,13 +27,30 @@ $('createDevice').onclick=async()=>{
 };
 $('backup').onclick=async()=>{try{saveBlob(await exportEncryptedIdentity(),'luqyak-device-backup-encrypted.json');say('احفظ النسخة المشفرة بمكان آمن؛ يلزم معها تذكر عبارة الحماية.')}catch(e){say(e.message)}};
 $('restore').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const doc=await restoreEncryptedIdentity(await f.text());identity=doc;await register(doc);say('تم استعادة المفتاح المشفر وتسجيل الجهاز.')}catch(e){say(e.message)}finally{e.target.value=''}};
+let unlockedIdentity=null,syncTimer=null,syncActive=false;
+async function performSync(){
+ if(!unlockedIdentity||syncActive||document.hidden||!navigator.onLine)return;
+ syncActive=true;
+ try{
+  const out=await receivePending({deviceId:unlockedIdentity.deviceId,privateKey:unlockedIdentity.privateKey,onProgress:p=>say('الصور: '+p.photoId+' — '+p.status)});
+  if(out.length)say('تم استلام '+out.filter(x=>x.status==='saved').length+' صورة. '+out.filter(x=>x.status==='error').length+' تحتاج إعادة المحاولة.');
+ }catch(e){say('تعذر استلام الصور: '+e.message)}
+ finally{syncActive=false}
+}
 $('receive').onclick=async()=>{
  try{
-  $('receive').disabled=true;const unlocked=await unlockStoredIdentity($('passphrase').value);
-  const out=await receivePending({deviceId:unlocked.deviceId,privateKey:unlocked.privateKey,onProgress:p=>say('الصور: '+p.photoId+' — '+p.status)});
-  say(out.length?'نتيجة الاستلام: '+out.filter(x=>x.status==='saved').length+' محفوظة، '+out.filter(x=>x.status==='error').length+' تحتاج إعادة المحاولة.':'لا توجد صور جديدة تنتظر الاستلام.');
+  $('receive').disabled=true;
+  unlockedIdentity=await unlockStoredIdentity($('passphrase').value);
+  $('passphrase').value='';
+  if(!syncTimer)syncTimer=setInterval(performSync,30000);
+  say('تم فتح مفتاح الجهاز. يجري استلام الصور تلقائيًا كل 30 ثانية أثناء فتح الصفحة واتصال الإنترنت.');
+  await performSync();
  }catch(e){say(e.message)}finally{$('receive').disabled=false}
 };
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)performSync()});
+window.addEventListener('online',performSync);
+window.addEventListener('pagehide',()=>{if(syncTimer)clearInterval(syncTimer);syncTimer=null;unlockedIdentity=null});
+
 $('share').onclick=async()=>{
  try{
   if(!identity)throw Error('أنشئ مفتاح هذا الجهاز أولًا');
