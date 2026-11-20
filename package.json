@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "check": "bash -o pipefail -c 'node --check worker.js 2>&1 | cut -c 1-180'",
+    "check": "npx esbuild worker.js --bundle --format=esm --platform=browser --outfile=/tmp/luqyak-v2-check.mjs --log-limit=2",
     "deploy": "wrangler deploy --keep-vars",
     "test": "node --test tests/*.test.mjs",
     "validate": "npm run check && npm test"

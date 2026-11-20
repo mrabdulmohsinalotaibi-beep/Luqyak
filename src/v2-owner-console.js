@@ -1,0 +1,173 @@
+import {getStoredIdentity,createStoredIdentity,unlockStoredIdentity,exportEncryptedIdentity,restoreEncryptedIdentity} from './v2-device-vault.js';
+import {receivePending,getDecryptedOwnerPhotos} from './local-owner-inbox.js';
+import {createLocalPdfVolumes} from './v2-local-pdf.js';
+import {exportEncryptedPhotoBackup,importEncryptedPhotoBackup} from './v2-local-backup.js';
+import {importLegacyMeetupPhotos} from './v2-legacy-import.js';
+const $=id=>document.getElementById(id),say=t=>{$('status').textContent=t};
+let identity;
+const fetchJson=async(url,options={})=>{const r=await fetch(url,{credentials:'same-origin',cache:'no-store',...options}),b=await r.json().catch(()=>({}));if(!r.ok)throw Error(b.error||'تعذر تنفيذ الطلب');return b};
+const formBody=b=>({method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});
+const saveBlob=(blob,name)=>{const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),45000)};
+const meetupId=()=>{const id=$('meetupId').value.trim();if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('أدخل معرّف اللقاء الصحيح');return id};
+async function register(record){
+ await fetchJson('/api/v2/devices',formBody({device_id:record.device_id,public_key_spki:record.public_key_spki}));
+}
+async function init(){
+ identity=await getStoredIdentity();
+ if(identity){
+  try{await register(identity);say('تم التعرف على مفتاح هذا الجهاز وربطه بالحساب. افتحه بعبارة الحماية لاستلام الصور.')}
+  catch(e){say('مفتاح الجهاز محفوظ محليًا. تعذر ربطه حاليًا؛ استخدم زر إعادة تسجيل الجهاز.')}
+ }else say('أنشئ مفتاحًا لهذا الجهاز ثم حمّل نسخته الاحتياطية المشفرة قبل مشاركة أي رابط.');
+}
+$('createDevice').onclick=async()=>{
+ const pass=$('passphrase').value;
+ try{
+  $('createDevice').disabled=true;
+  identity=await createStoredIdentity(pass);
+  await register(identity);
+  $('passphrase').value='';
+  say('تم إنشاء مفتاح الجهاز وتسجيل مفتاحه العام. احفظ النسخة الاحتياطية المشفرة الآن.');
+ }catch(e){say(e.message)}finally{$('createDevice').disabled=false}
+};
+$('registerDevice').onclick=async()=>{
+ try{const doc=await getStoredIdentity();if(!doc)throw Error('أنشئ مفتاح الجهاز أولًا');await register(doc);identity=doc;say('تم ربط المفتاح العام لهذا الجهاز بالحساب دون تغيير المفتاح الخاص.')}
+ catch(e){say(e.message)}
+};
+$('backup').onclick=async()=>{try{saveBlob(await exportEncryptedIdentity(),'luqyak-device-backup-encrypted.json');say('احفظ النسخة المشفرة بمكان آمن؛ يلزم معها تذكر عبارة الحماية.')}catch(e){say(e.message)}};
+$('restore').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const doc=await restoreEncryptedIdentity(await f.text());identity=doc;await register(doc);say('تم استعادة المفتاح المشفر وتسجيل الجهاز.')}catch(e){say(e.message)}finally{e.target.value=''}};
+let unlockedIdentity=null,syncTimer=null,syncActive=false;
+async function performSync(){
+ if(!unlockedIdentity||syncActive||document.hidden||!navigator.onLine)return;
+ syncActive=true;
+ try{
+  const out=await receivePending({deviceId:unlockedIdentity.deviceId,privateKey:unlockedIdentity.privateKey,onProgress:p=>say('الصور: '+p.photoId+' — '+p.status)});
+  if(out.length)say('تم استلام '+out.filter(x=>x.status==='saved').length+' صورة. '+out.filter(x=>x.status==='error').length+' تحتاج إعادة المحاولة.');
+ }catch(e){say('تعذر استلام الصور: '+e.message)}
+ finally{syncActive=false}
+}
+$('receive').onclick=async()=>{
+ try{
+  $('receive').disabled=true;
+  unlockedIdentity=await unlockStoredIdentity($('passphrase').value);
+  $('passphrase').value='';
+  if(!syncTimer)syncTimer=setInterval(performSync,30000);
+  say('تم فتح مفتاح الجهاز. يجري استلام الصور تلقائيًا كل 30 ثانية أثناء فتح الصفحة واتصال الإنترنت.');
+  await performSync();
+ }catch(e){say(e.message)}finally{$('receive').disabled=false}
+};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)performSync()});
+window.addEventListener('online',performSync);
+window.addEventListener('pagehide',()=>{if(syncTimer)clearInterval(syncTimer);syncTimer=null;unlockedIdentity=null});
+
+$('share').onclick=async()=>{
+ try{
+  if(!identity)throw Error('أنشئ مفتاح هذا الجهاز أولًا');
+  const id=meetupId(),hours=Number($('duration').value);
+  const link=await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/shares',formBody({scope:'upload',hours}));
+  localStorage.setItem('luqyak:v2:last-share:'+id,link.id);
+  const address=location.origin+'/v2/upload/'+link.token;
+  $('link').value=address;say('رابط التصوير صالح حتى '+new Date(link.expires_at).toLocaleString('ar-SA'));
+ }catch(e){say(e.message)}
+};
+$('copy').onclick=async()=>{try{if(!$('link').value)return say('أنشئ رابطًا أولًا');await navigator.clipboard.writeText($('link').value);say('تم نسخ رابط التصوير.')}catch(e){say('انسخ الرابط يدويًا من الخانة.')}};
+const b64=b=>{const u=new Uint8Array(b);let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode(...u.subarray(i,i+8192));return btoa(s)};
+const base64url=b=>b64(b).split('+').join('-').split('/').join('_').replace(/=+$/,'');
+const inferType=bytes=>bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':bytes[0]===82&&bytes[1]===73&&bytes[2]===70?'image/webp':null;
+$('extend').onclick=async()=>{
+ try{
+  const id=meetupId(),shareId=localStorage.getItem('luqyak:v2:last-share:'+id);
+  if(!shareId)throw Error('أنشئ رابط التصوير أولًا على هذا الجهاز');
+  const out=await fetchJson('/api/v2/shares/'+encodeURIComponent(shareId)+'/extend',formBody({hours:Number($('duration').value)}));
+  say('تم تمديد استقبال الصور حتى '+new Date(out.expires_at).toLocaleString('ar-SA')+'. سيبقى الرابط السابق صالحًا.');
+ }catch(e){say(e.message)}
+};
+$('close').onclick=async()=>{
+ try{
+  const id=meetupId();
+  if(!confirm('هل تريد إيقاف استقبال صور جديدة لهذا اللقاء؟ ستظل الصور المرسلة سابقًا في قائمة الاستلام.'))return;
+  await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/close',formBody({}));
+  say('تم إغلاق استقبال الصور. روابط المشاهدة الحالية لا تتأثر.');
+ }catch(e){say(e.message)}
+};
+$('shareView').onclick=async()=>{
+ let db;
+ try{
+  $('shareView').disabled=true;
+  const id=meetupId(),hours=Number($('viewDuration').value);
+  if(!unlockedIdentity)throw Error('افتح مفتاح الجهاز لاستعراض الألبوم ومشاركة الصور');
+  const photos=(await getDecryptedOwnerPhotos({meetupId:id,privateKey:unlockedIdentity.privateKey})).slice(0,100);
+  if(!photos.length)throw Error('استلم صور اللقاء على جهازك أولًا قبل مشاركة الألبوم');
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt']);
+  const secret=await crypto.subtle.exportKey('raw',key);
+  const share=await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/shares',formBody({scope:'view',hours,allow_pdf:$('allowPdf').checked}));
+  try{
+   for(let i=0;i<photos.length;i++){
+    const raw=new Uint8Array(await photos[i].bytes.arrayBuffer()),type=inferType(raw);
+    if(!type)throw Error('صيغة صورة غير مدعومة ضمن الألبوم');
+    const photoId=crypto.randomUUID(),iv=crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(id+':'+photoId)},key,raw);
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',ciphertext))].map(x=>x.toString(16).padStart(2,'0')).join('');
+    const resp=await fetch('/api/v2/meetups/'+encodeURIComponent(id)+'/view-photos?share_id='+encodeURIComponent(share.id),{
+     method:'POST',credentials:'same-origin',headers:{'content-type':'application/octet-stream','x-luqyak-photo-id':photoId,
+       'x-luqyak-iv':b64(iv),'x-luqyak-sha256':hash,'x-luqyak-media-type':type},body:ciphertext
+    });
+    if(!resp.ok)throw Error('تعذر إعداد الصورة رقم '+(i+1));
+    say('تجهيز رابط المشاهدة: '+(i+1)+' من '+photos.length);
+   }
+   $('viewLink').value=location.origin+'/v2/view/'+share.token+'#key='+base64url(secret);
+   say('رابط الألبوم جاهز للمشاهدة فقط؛ يحتفظ الوسيط بنسخ مشفّرة حتى انتهاء الصلاحية.');
+  }catch(e){
+   await fetchJson('/api/v2/shares/'+encodeURIComponent(share.id)+'/revoke',formBody({})).catch(()=>{});
+   throw e;
+  }
+ }catch(e){say(e.message)}finally{db?.close();$('shareView').disabled=false}
+};
+$('copyView').onclick=async()=>{try{if(!$('viewLink').value)return say('أنشئ رابط المشاهدة أولًا');await navigator.clipboard.writeText($('viewLink').value);say('تم نسخ رابط المشاهدة.')}catch(e){say('يمكن نسخ رابط المشاهدة يدويًا')}};
+
+$('importLegacy').onclick=async()=>{
+ try{
+  $('importLegacy').disabled=true;
+  const id=meetupId();
+  const out=await importLegacyMeetupPhotos({meetupId:id,onProgress:p=>say('نقل صور اللقاء القديمة: '+p.done+' من '+p.total+' — المحفوظة: '+p.copied+'، المتجاوزة: '+p.skipped+'، المتعذرة: '+p.failed)});
+  say('انتهى نسخ الصور السابقة إلى الجهاز. نُسخ '+out.copied+'، موجود مسبقًا '+out.skipped+'، تعذّر '+out.failed+'. لم تُحذف أي صورة أصلية من الموقع.');
+ }catch(e){say('تعذر استيراد الصور السابقة: '+e.message)}
+ finally{$('importLegacy').disabled=false}
+};
+$('backupPhotos').onclick=async()=>{
+ try{
+  $('backupPhotos').disabled=true;const id=meetupId();
+  const docs=await exportEncryptedPhotoBackup(id,$('passphrase').value,p=>say('نسخ الصور: '+p.done+' من '+p.total));
+  const area=$('backupLinks');area.replaceChildren();
+  for(const item of docs){
+   const url=URL.createObjectURL(item.blob),a=document.createElement('a');
+   a.href=url;a.download=item.fileName;a.textContent='حفظ النسخة المشفرة '+item.fileName;a.className='download';area.append(a);
+  }
+  say('النسخة الاحتياطية للصور جاهزة للحفظ. احتفظ بكل الأجزاء مع عبارة الحماية.');
+ }catch(e){say(e.message)}finally{$('backupPhotos').disabled=false}
+};
+$('restorePhotos').onchange=async event=>{
+ const files=[...(event.target.files||[])];
+ try{
+  if(!files.length)return;
+  let count=0;
+  for(const f of files){const result=await importEncryptedPhotoBackup(await f.text(),$('passphrase').value);count+=result.count}
+  say('تم استعادة '+count+' صورة إلى التخزين المحلي. يفضل الاحتفاظ بالنسخ المشفرة الأصلية.');
+ }catch(e){say(e.message)}finally{event.target.value=''}
+};
+$('exportPdf').onclick=async()=>{
+ let db;
+ try{
+  $('exportPdf').disabled=true;
+  const id=meetupId();
+  if(!unlockedIdentity)throw Error('افتح مفتاح الجهاز أولًا لإنشاء PDF من صورك المشفرة');
+  const local=await getDecryptedOwnerPhotos({meetupId:id,privateKey:unlockedIdentity.privateKey});
+  if(!local.length)throw Error('لا توجد صور محفوظة لهذا اللقاء على هذا الجهاز');
+  const docs=await createLocalPdfVolumes({title:$('title').value||'ذكريات اللقاء',photos:local,onProgress:p=>say('إنشاء PDF: '+p.done+' من '+p.total)});
+  const out=$('pdfLinks');out.replaceChildren();
+  for(const doc of docs){
+   const url=URL.createObjectURL(doc.blob),a=document.createElement('a');a.href=url;a.download=doc.fileName;a.textContent='حفظ '+doc.fileName+' ('+doc.pages+' صفحات)';a.className='download';out.append(a);
+  }
+  say('ملفات PDF جاهزة للحفظ داخل جهازك دون رفعها للخادم.');
+ }catch(e){say(e.message)}finally{db?.close();$('exportPdf').disabled=false}
+};
+init().catch(e=>say(e.message));

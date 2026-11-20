@@ -1,0 +1,40 @@
+name: Luqyak v2 focused security and build
+on:
+  pull_request:
+    paths:
+      - 'src/v2-*.js'
+      - 'luqyak-atelier-theme.css'
+      - 'luqyak-theme-response.js'
+      - 'src/local-owner-inbox.js'
+      - 'src/secure-photo-envelope.js'
+      - 'v2-*.js'
+      - 'worker.js'
+      - 'migrations/20261120_local_first_v2.sql'
+      - 'tests/v2-*.test.mjs'
+      - 'tests/v2-migration-smoke.py'
+      - 'tests/secure-photo-envelope.test.mjs'
+      - '.github/workflows/v2-focused.yml'
+  workflow_dispatch:
+jobs:
+  v2-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Worker build and ESM syntax
+        run: |
+          npm run check
+          node --check v2-relay.js
+          node --check v2-cleanup.js
+          node --check src/v2-device-vault.js
+          node --check src/v2-local-pdf.js
+          npx esbuild src/v2-owner-console.js --bundle --format=esm --platform=browser --outfile=/tmp/luqyak-owner-check.js
+          npx esbuild src/v2-view-album.js --bundle --format=esm --platform=browser --outfile=/tmp/luqyak-view-check.js
+          npx esbuild src/v2-guest-upload.js --bundle --format=esm --platform=browser --outfile=/tmp/luqyak-guest-check.js
+      - name: Verify safe non-destructive D1 migration
+        run: python3 tests/v2-migration-smoke.py
+      - name: Focused v2 behavior and encryption tests
+        run: node --test tests/secure-photo-envelope.test.mjs tests/v2-relay-contracts.test.mjs tests/v2-local-privacy.test.mjs tests/v2-theme-contract.test.mjs
