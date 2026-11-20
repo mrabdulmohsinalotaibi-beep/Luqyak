@@ -21,5 +21,16 @@ export async function cleanupAcknowledgedV2(env){
    console.error('v2 encrypted cleanup failed for queued receipt');
   }
  }
- return {cleaned};
+ let expiredViewPackages=0;
+ try{
+  const views=(await env.DB.prepare('SELECT id,object_key FROM lk_v2_view_packages WHERE expires_at<=? OR revoked_at IS NOT NULL LIMIT 50').bind(Date.now()).all()).results;
+  for(const view of views){
+   try{
+    await env.PHOTOS.delete(view.object_key);
+    await env.DB.prepare('DELETE FROM lk_v2_view_packages WHERE id=?').bind(view.id).run();
+    expiredViewPackages++;
+   }catch(error){console.error('v2 expired view cleanup retry required')}
+  }
+ }catch(error){if(!/no such table/i.test(String(error)))throw error}
+ return {cleaned,expiredViewPackages};
 }
