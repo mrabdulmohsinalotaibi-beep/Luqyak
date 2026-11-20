@@ -54,3 +54,19 @@ Feature-complete **development implementation** with isolated routes for owner, 
 ## Current test status
 - Focused GitHub Actions `Luqyak v2 focused security and build` passed with encrypted roundtrip and security routing checks.
 - General repository legacy suites remain failing due to unrelated retained expectations (retired chat flows, older brand palette and legacy response mocks), so merge/deployment is blocked.
+
+## 2026-11-20 follow-up implementation
+- Account-isolated IndexedDB for owner photo data and encrypted identity records; no cross-account browser library sharing.
+- Owner unlocks private key once to retry deliveries every 30 seconds **while page is open and online**. Browser restrictions mean reception cannot decrypt in a closed PWA; ciphertext remains queued pending the next unlock.
+- Owner can explicitly copy authorized legacy JPEG photos from `/api/social/meetup` and `/api/social/photo` into the account-local library. Existing Cloudflare originals are never deleted. Imported counts and errors are reported.
+- Device identity registration retries the original public key instead of generating a replacement after transient server errors.
+- Upload link metadata now checks the closed/expired window before exposing a public encryption key. Conditional R2 creation prevents overwriting ciphertext on an upload collision.
+- Local saving re-reads the Blob and compares SHA-256 before acknowledging a delivery.
+- New Python SQLite smoke test applies v2 schema twice against disposable legacy rows, verifies they stay intact and checks quota updates.
+
+### Remaining security and operational gaps
+- Local IndexedDB photo Blob bytes are **not encrypted at rest** at this stage. Only transport/pending copies, view packages, backups and device private-key vault are encrypted. Add at-rest photo encryption with key recovery and migration before claiming all local media is encrypted.
+- Browser profile data removal can erase local photos; encrypted manual backup is required to recover them. Do not promise app uninstallation cannot erase storage.
+- R2 pending uploads are deliberately retained if no owner acknowledgement arrives; develop an owner-visible expiry reminder and verified retention/deletion policy before the temporary relay goes live.
+- Public uploader rate limits should be tested under multiple concurrent guests, and enforce per-IP/bot challenges where supported to prevent free-tier exhaustion.
+- Preview must use isolated test D1/R2 with full end-to-end browser testing on Android and iOS; no production D1 migration applied.
