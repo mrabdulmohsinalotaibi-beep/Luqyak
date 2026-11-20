@@ -33,7 +33,8 @@ export async function exportEncryptedPhotoBackup(meetupId,passphrase,onProgress=
  for(const item of photos){
   const bytes=new Uint8Array(await item.bytes.arrayBuffer());
   if(size+bytes.length>20*1024*1024&&pending.length)await flush();
-  pending.push({id:item.id,meetupId,savedAt:item.savedAt,sha256:item.sha256,data:b64(bytes)});
+  if(!item.encrypted||!item.wrappedKey||!item.iv||!item.ciphertextSha256)throw Error('Found unprotected legacy local photo; migrate before backup');
+  pending.push({id:item.id,meetupId,savedAt:item.savedAt,encrypted:true,version:item.version,iv:item.iv,wrappedKey:item.wrappedKey,ciphertextSha256:item.ciphertextSha256,data:b64(bytes)});
   size+=bytes.length;done++;onProgress({done,total:photos.length});
   if(size>=20*1024*1024)await flush();
  }
@@ -52,8 +53,10 @@ export async function importEncryptedPhotoBackup(file,passphrase){
  let count=0;
  for(const photo of payload.photos){
   if(!/^[0-9a-f-]{36}$/i.test(photo.id||'')||photo.meetupId!==payload.meetupId||typeof photo.data!=='string'||photo.data.length>45*1024*1024)throw Error('بيانات صورة غير صالحة');
-  const bytes=unb64(photo.data);
-  await saveOwnerPhoto({id:photo.id,meetupId:photo.meetupId,plain:bytes,sha256:photo.sha256||'restored'});
+  if(photo.encrypted!==true||!photo.iv||!photo.wrappedKey||!photo.ciphertextSha256||photo.version!==1)throw Error('Encrypted photo envelope missing');
+  const bytes=unb64(photo.data),envelope={version:photo.version,meetupId:photo.meetupId,photoId:photo.id,ciphertext:bytes,
+   iv:unb64(photo.iv),wrappedKey:unb64(photo.wrappedKey),sha256:photo.ciphertextSha256};
+  await saveOwnerPhoto({id:photo.id,meetupId:photo.meetupId,envelope});
   count++;
  }
  return {meetupId:payload.meetupId,count};
