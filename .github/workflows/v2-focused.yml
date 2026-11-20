@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/v2-*.js'
+      - 'luqyak-atelier-theme.css'
+      - 'luqyak-theme-response.js'
       - 'src/local-owner-inbox.js'
       - 'src/secure-photo-envelope.js'
       - 'v2-*.js'
@@ -35,4 +37,4 @@ jobs:
       - name: Verify safe non-destructive D1 migration
         run: python3 tests/v2-migration-smoke.py
       - name: Focused v2 behavior and encryption tests
-        run: node --test tests/secure-photo-envelope.test.mjs tests/v2-relay-contracts.test.mjs tests/v2-local-privacy.test.mjs
+        run: node --test tests/secure-photo-envelope.test.mjs tests/v2-relay-contracts.test.mjs tests/v2-local-privacy.test.mjs tests/v2-theme-contract.test.mjs
