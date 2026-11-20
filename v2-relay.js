@@ -138,6 +138,8 @@ export async function v2RelayHandler(request,env,ctx){
    if(!c)return err(403,'link_invalid');
    const meeting=await env.DB.prepare('SELECT ended FROM lk_meetups WHERE id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
    if(!meeting||meeting.ended)return err(410,'meetup_closed');
+   const window=await env.DB.prepare('SELECT upload_ends_at,closed_at FROM lk_v2_meetup_windows WHERE meetup_id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
+   if(!window||window.closed_at||window.upload_ends_at<=now())return err(410,'upload_window_closed');
    const d=await env.DB.prepare('SELECT device_id,public_key_spki FROM lk_v2_device_keys WHERE owner_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1').bind(c.owner_id).first();
    if(!d)return err(409,'recipient_device_unavailable');
    return send({meetup_id:c.meetup_id,device_id:d.device_id,public_key_spki:d.public_key_spki,expires_at:c.expires_at});
@@ -157,8 +159,8 @@ export async function v2RelayHandler(request,env,ctx){
    if(!device)return err(403,'device_invalid');
    const length=Number(request.headers.get('content-length'));
    if(!Number.isFinite(length)||length<17||length>15*1024*1024+16)return err(413,'size_invalid');
-   const existing=await env.DB.prepare('SELECT photo_id,ciphertext_sha256 FROM lk_v2_photo_queue WHERE photo_id=?').bind(id).first();
-   if(existing)return existing.ciphertext_sha256===checksum?send({ok:true,id,existing:true}):err(409,'photo_id_conflict');
+   const existing=await env.DB.prepare('SELECT photo_id,ciphertext_sha256,share_id FROM lk_v2_photo_queue WHERE photo_id=?').bind(id).first();
+   if(existing)return existing.share_id===c.id && existing.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id,existing:true}):err(409,'photo_id_conflict');
    const bytes=await request.arrayBuffer();
    if(bytes.byteLength!==length)return err(400,'length_mismatch');
    const actual=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -167,10 +169,12 @@ export async function v2RelayHandler(request,env,ctx){
    const usage=await env.DB.prepare('UPDATE lk_v2_share_usage SET photo_count=photo_count+1,bytes_total=bytes_total+? WHERE share_id=? AND photo_count<100 AND bytes_total+?<=524288000').bind(bytes.byteLength,c.id,bytes.byteLength).run();
    if(!usage.meta?.changes)return err(429,'upload_quota_reached');
    try{
-    await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType:'application/octet-stream'}});
+    const put=await env.PHOTOS.put(key,bytes,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/octet-stream'}});
+    if(!put)throw Error('relay_object_conflict');
     await env.DB.prepare("INSERT INTO lk_v2_photo_queue(photo_id,share_id,size_bytes,meetup_id,owner_id,recipient_device_id,storage_key,ciphertext_sha256,wrapped_key,iv,version,status,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,'queued',?,?)").bind(id,c.id,bytes.byteLength,c.meetup_id,c.owner_id,deviceId,key,checksum.toLowerCase(),wrapped,iv,now(),expires).run();
    }catch(e){
-    await env.PHOTOS.delete(key).catch(()=>{});
+    // Never delete a pre-existing object on a conflicting retry.
+    if(String(e?.message)!=='relay_object_conflict')await env.PHOTOS.delete(key).catch(()=>{});
     await env.DB.prepare('UPDATE lk_v2_share_usage SET photo_count=MAX(0,photo_count-1),bytes_total=MAX(0,bytes_total-?) WHERE share_id=?').bind(bytes.byteLength,c.id).run().catch(()=>{});
     throw e;
    }
