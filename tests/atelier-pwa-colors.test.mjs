@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
 test('all installed-app manifest variants use the same charcoal and ivory colors',()=>{
- const theme=String.raw`\\"theme_color\\":\\"#242623\\"`;
- const background=String.raw`\\"background_color\\":\\"#F8F6F1\\"`;
+ const escapedQuote=String.fromCharCode(92,34);
+ const theme='theme_color'+escapedQuote+':'+escapedQuote+'#242623';
+ const background='background_color'+escapedQuote+':'+escapedQuote+'#F8F6F1';
  assert.equal(source.split(theme).length-1,4);
  assert.equal(source.split(background).length-1,4);
- assert.doesNotMatch(source,/theme_color\\":\\"#006C35/);
- assert.doesNotMatch(source,/background_color\\":\\"#F7F1E9/);
+ assert.ok(!source.includes('theme_color'+escapedQuote+':'+escapedQuote+'#006C35'));
+ assert.ok(!source.includes('background_color'+escapedQuote+':'+escapedQuote+'#F7F1E9'));
 });
 test('logo assets, photo archive and production API remain in place',()=>{
  assert.match(source,/\/brand\/luqyak-icon-192\.png/);
