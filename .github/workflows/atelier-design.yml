@@ -6,6 +6,7 @@ on:
       - 'luqyak-atelier-theme.css'
       - 'luqyak-theme-response.js'
       - 'tests/atelier-design.test.mjs'
+      - 'tests/essential-components.test.mjs'
       - '.github/workflows/atelier-design.yml'
   workflow_dispatch:
 jobs:
@@ -19,4 +20,4 @@ jobs:
       - name: Check worker source
         run: node --check worker.js 2>/tmp/syntax.log || { tail -c 700 /tmp/syntax.log; exit 1; }
       - name: Verify premium layout and navigation
-        run: node --test tests/atelier-design.test.mjs
+        run: node --test tests/atelier-design.test.mjs tests/essential-components.test.mjs

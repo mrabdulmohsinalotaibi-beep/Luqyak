@@ -27,5 +27,7 @@ test('main mobile menu opens memories instead of retired chat',()=>{
  assert.match(app,/data-tab=\\\"memories\\\"/);
  assert.doesNotMatch(app.slice(0,270000),/data-tab=\\\"chats\\\"/);
  assert.match(app,/function draw\(\).*?tab==='memories'/s);
- assert.match(app,/lk-atelier-vault/);
+ assert.match(app,/lk-core-nav/);
+ assert.match(app,/lk-home-shortcuts/);
+ assert.doesNotMatch(app,/lk-atelier-vault/);
 });

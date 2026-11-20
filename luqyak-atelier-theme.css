@@ -88,3 +88,42 @@ body.lk-v2{background:#f8f6f1!important;color:#202320!important;padding:clamp(14
 .lk-v2 main>a.lk-v2-back{display:inline-flex;gap:9px;align-items:center;background:#f0ece4;color:#373a35;text-decoration:none;border:1px solid #ddd5c6;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:750}
 .lk-v2 main>a.lk-v2-back:hover{background:#e7dfd0}
 @media(max-width:700px){.lk-home-premium .lk-home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr))!important}.lk-home-premium .lk-home-shortcuts .lk-atelier-vault{grid-column:span 2;min-height:65px!important;flex-direction:row}.lk-home-premium .lk-home-shortcuts .lk-atelier-vault span{font-size:20px}}
+
+/* ESSENTIAL LUQYAK — three destinations, creation always available */
+:root{--lk-ink:#1d201e;--lk-paper:#f8f6f1;--lk-gold:#a98b5e}
+.lk-topbar .lk-head-left,.lk-topbar .lk-head-right{gap:8px}
+.lk-topbar .lk-avatar-trigger{background:#252823!important;color:#f9f3e9!important;border-color:#252823!important}
+.lk-topbar .lk-avatar-trigger svg{stroke:#f9f3e9!important}
+.lk-core-nav{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:2px!important;width:min(96%,410px)!important;padding:7px!important}
+.lk-core-nav > button{min-width:0!important;border:0!important;background:transparent!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px!important;min-height:53px!important;font-size:12px!important;font-weight:700!important;color:#77756f!important}
+.lk-core-nav > button.sel{color:#202420!important;background:#eeeae0!important}
+.lk-core-nav > button.lk-bottom-camera{background:none!important;border:0!important;box-shadow:none!important}
+.lk-core-nav > button.lk-bottom-camera .sym{display:grid!important;place-items:center;background:#242723!important;color:#fff!important;border-radius:14px!important;box-shadow:0 5px 14px #12161427!important;width:45px;height:45px;font-size:26px!important;line-height:1}
+.lk-home-premium .lk-home-shortcuts{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;margin:0!important;gap:9px!important}
+.lk-home-premium .lk-home-shortcuts .lk-home-shortcut{min-height:94px!important;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:17px!important}
+.lk-home-premium .lk-home-shortcuts .lk-home-shortcut-main{background:#252823!important;color:#fff!important;border-color:#252823!important}
+.lk-home-premium .lk-home-shortcuts .lk-home-shortcut-main span{color:#d8c19b!important}
+.lk-home-premium .lk-home-hero{min-height:clamp(180px,27vw,250px)!important}
+.lk-home-premium .lk-home-hero-copy{padding:clamp(20px,4vw,35px)!important}
+.lk-home-premium .lk-home-hero-copy h1{font-size:clamp(25px,4.2vw,39px)!important}
+.lk-home-premium .lk-night-feature{min-height:112px!important;border-radius:19px!important;gap:14px!important;padding:13px 15px!important}
+.lk-home-premium .lk-night-feature-art{flex-basis:80px!important;height:84px!important}
+.lk-home-premium .lk-home-section-title{margin-block:8px 0!important}
+.lk-home-premium .lk-home-section-title h2{font-size:clamp(17px,2.9vw,23px)!important}
+.lk-account-revamp .lk-account-directory{display:grid!important;gap:9px!important}
+.lk-account-revamp .lk-account-link{min-height:65px!important;box-shadow:none!important}
+.lk-account-revamp .lk-account-link small{color:#777871!important}
+.lk-account-settings .lk-pref-panel{background:#fff!important;border:1px solid #e7e1d7!important}
+.lk-account-settings .lk-pref-disclosure{border:1px solid #e6e0d6!important;border-radius:17px!important;background:#fff!important}
+.lk-agenda .lk-agenda-stats{background:#fff!important;border:1px solid #e5e0d6!important;border-radius:18px!important}
+.lk-agenda .lk-agenda-card{border-radius:18px!important;background:#fff!important;border:1px solid #e5e0d6!important}
+.lk-my-memories{padding-bottom:98px!important}
+@media(max-width:520px){
+ .lk-home-premium .lk-home-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+ .lk-home-premium .lk-home-shortcuts button{min-height:75px!important;padding:8px 2px!important}
+ .lk-home-premium .lk-home-shortcuts strong{font-size:clamp(10px,2.7vw,13px)!important}
+ .lk-home-premium .lk-home-hero{min-height:172px!important}
+ .lk-home-premium .lk-home-hero-copy{padding:22px!important}
+ .lk-home-premium .lk-night-feature{padding:10px!important}
+ .lk-core-nav{bottom:max(8px,env(safe-area-inset-bottom))!important}
+}
