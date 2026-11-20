@@ -65,8 +65,16 @@ Feature-complete **development implementation** with isolated routes for owner, 
 - New Python SQLite smoke test applies v2 schema twice against disposable legacy rows, verifies they stay intact and checks quota updates.
 
 ### Remaining security and operational gaps
-- Local IndexedDB photo Blob bytes are **not encrypted at rest** at this stage. Only transport/pending copies, view packages, backups and device private-key vault are encrypted. Add at-rest photo encryption with key recovery and migration before claiming all local media is encrypted.
+- New V2/local-migrated photo Blob bytes are stored as AES-GCM ciphertext with owner-wrapped keys, including after receipt and before relay acknowledgement. Decryption occurs in the owner browser session only after private-key unlock. Independent on-device validation and key-loss recovery still require two-phone end-to-end testing.
 - Browser profile data removal can erase local photos; encrypted manual backup is required to recover them. Do not promise app uninstallation cannot erase storage.
 - R2 pending uploads are deliberately retained if no owner acknowledgement arrives; develop an owner-visible expiry reminder and verified retention/deletion policy before the temporary relay goes live.
 - Public uploader rate limits should be tested under multiple concurrent guests, and enforce per-IP/bot challenges where supported to prevent free-tier exhaustion.
 - Preview must use isolated test D1/R2 with full end-to-end browser testing on Android and iOS; no production D1 migration applied.
+
+## 2026-11-20: encrypted-at-rest implementation
+- New recipient envelopes are authenticated with AES-GCM, then stored as ciphertext plus IV/wrapped-key/checksum metadata in account-isolated IndexedDB. Plaintext is never persisted by the V2 local photo library.
+- Existing legacy JPEGs are re-encrypted locally with the owner's public key when copied into the V2 library; originals remain safely on existing R2.
+- Local PDF and owner-created share packages decrypt photographs **in memory only after key unlock**; viewer never has upload capability.
+- Encrypted photo backups now retain envelope metadata (version, IV, wrapped key and ciphertext SHA-256) so restoration does not store plaintext.
+- Additional focused tests verify account isolation, encrypted-at-rest contract, legacy copy behavior, and repeatable D1 migration.
+- IMPORTANT: this feature branch has **not** been deployed or its migration applied to the production D1/R2. Tests do not replace browser-device QA.
