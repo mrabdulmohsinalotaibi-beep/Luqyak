@@ -12,7 +12,9 @@ on:
       - 'migrations/20261120_local_first_v2.sql'
       - 'tests/v2-*.test.mjs'
       - 'tests/v2-migration-smoke.py'
-      - 'tests/v2-end-to-end.test.mjs'
+      - 'tests/v2-end-to-end.test.mjs tests/v2-bounded-body.test.mjs'
+      - 'tests/v2-bounded-body.test.mjs'
+      - 'v2-bounded-body.js'
       - 'tests/secure-photo-envelope.test.mjs'
       - '.github/workflows/v2-focused.yml'
   workflow_dispatch:
@@ -29,6 +31,7 @@ jobs:
         run: |
           npm run check
           node --check v2-relay.js
+          node --check v2-bounded-body.js
           node --check v2-cleanup.js
           node --check src/v2-device-vault.js
           node --check src/v2-local-pdf.js
