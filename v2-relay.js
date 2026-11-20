@@ -179,13 +179,13 @@ export async function v2RelayHandler(request,env,ctx){
   if(path==='/api/v2/deliveries'&&method==='GET'){
    if(!owner)return err(401,'login_required');
    const deviceId=url.searchParams.get('device_id');if(!UUID.test(deviceId||''))return err(400,'invalid_device');
-   const rows=await env.DB.prepare("SELECT photo_id,meetup_id,ciphertext_sha256,wrapped_key,iv,version,created_at,expires_at FROM lk_v2_photo_queue WHERE owner_id=? AND recipient_device_id=? AND status='queued' AND expires_at>? ORDER BY created_at LIMIT 100").bind(owner.id,deviceId,now()).all();
+   const rows=await env.DB.prepare("SELECT photo_id,meetup_id,ciphertext_sha256,wrapped_key,iv,version,created_at,expires_at FROM lk_v2_photo_queue WHERE owner_id=? AND recipient_device_id=? AND status='queued' ORDER BY created_at LIMIT 100").bind(owner.id,deviceId).all();
    return send({items:rows.results});
   }
   const download=path.match(/^\/api\/v2\/deliveries\/([a-f0-9-]{36})$/i);
   if(download&&method==='GET'){
    if(!owner)return err(401,'login_required');
-   const row=await env.DB.prepare("SELECT storage_key FROM lk_v2_photo_queue WHERE photo_id=? AND owner_id=? AND status='queued' AND expires_at>?").bind(download[1],owner.id,now()).first();
+   const row=await env.DB.prepare("SELECT storage_key FROM lk_v2_photo_queue WHERE photo_id=? AND owner_id=? AND status='queued'").bind(download[1],owner.id).first();
    if(!row)return err(404,'not_found');
    const obj=await env.PHOTOS.get(row.storage_key);if(!obj)return err(404,'object_missing');
    return new Response(obj.body,{headers:{'content-type':'application/octet-stream','cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}});
