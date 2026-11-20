@@ -49,6 +49,7 @@ test('v2 modules and guest/view pages are served as isolated non-cacheable resou
  assert.equal(upload.headers.get('cache-control'),'no-store');
  assert.equal(view.headers.get('cache-control'),'no-store');
  assert.match(await upload.text(),/v2\/assets\/upload\.js/);
+ assert.match(await uploadPage().text(),/capture="environment"/);
  assert.match(await view.text(),/v2\/assets\/view\.js/);
 });
 
