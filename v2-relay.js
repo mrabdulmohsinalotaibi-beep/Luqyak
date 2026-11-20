@@ -104,18 +104,19 @@ export async function v2RelayHandler(request,env,ctx){
    if(count.n>=100)return err(429,'view_package_limit');
    const len=request.headers.get('content-length');
    if(len!==null&&(!Number.isSafeInteger(Number(len))||Number(len)<17||Number(len)>16*1024*1024))return err(413,'size_invalid');
-   const exists=await env.DB.prepare('SELECT id,ciphertext_sha256 FROM lk_v2_view_packages WHERE id=?').bind(photoId).first();
-   if(exists)return exists.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id:photoId,existing:true}):err(409,'photo_id_conflict');
+   const exists=await env.DB.prepare('SELECT id,share_id,ciphertext_sha256 FROM lk_v2_view_packages WHERE id=?').bind(photoId).first();
+   if(exists)return exists.share_id===shareId&&exists.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id:photoId,existing:true}):err(409,'photo_id_conflict');
    let binary;
    try{binary=await readBoundedBody(request,16*1024*1024)}catch(e){return err(e instanceof RangeError?413:400,'size_invalid')}
    if(binary.byteLength<17)return err(400,'size_invalid');
    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',binary))].map(x=>x.toString(16).padStart(2,'0')).join('');
    if(hash!==checksum.toLowerCase())return err(400,'checksum_mismatch');
    const key='v2-view/'+shareId+'/'+photoId+'.bin';
-   await env.PHOTOS.put(key,binary,{httpMetadata:{contentType:'application/octet-stream'}});
+   const object=await env.PHOTOS.put(key,binary,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/octet-stream'}});
+   if(!object)return err(409,'photo_id_conflict');
    try{
     await env.DB.prepare("INSERT INTO lk_v2_view_packages(id,meetup_id,owner_id,object_key,share_id,iv,ciphertext_sha256,media_type,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(photoId,m.id,owner.id,key,shareId,iv,hash,type,share.expires_at,now()).run();
-   }catch(e){await env.PHOTOS.delete(key);throw e}
+   }catch(e){await env.PHOTOS.delete(key).catch(()=>{});throw e}
    return send({ok:true,id:photoId},201);
   }
   if(path==='/api/v2/view/info'&&method==='GET'){
