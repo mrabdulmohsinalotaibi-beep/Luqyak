@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS lk_v2_meetup_shares (
   expires_at INTEGER NOT NULL,
   revoked_at INTEGER,
   max_uploads INTEGER,
+  can_download_pdf INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lk_v2_share_meetup ON lk_v2_meetup_shares(meetup_id,scope,expires_at);
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS lk_v2_view_packages (
   meetup_id TEXT NOT NULL,
   owner_id TEXT NOT NULL,
   object_key TEXT NOT NULL UNIQUE,
+  share_id TEXT NOT NULL,
+  iv TEXT NOT NULL,
+  ciphertext_sha256 TEXT NOT NULL,
+  media_type TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   revoked_at INTEGER
