@@ -87,3 +87,13 @@ Feature-complete **development implementation** with isolated routes for owner, 
 - New focused design tests ensure theme delivery, correct main-route integration, actual Memories navigation and v2 return paths.
 - Focused GitHub workflow passed at commit 8479171a8e88d07cd4d789a0f990049b88583dbd. General legacy test suite still fails; live phone/tablet visual validation not performed.
 - **Not deployed.** Do not merge the combined V2 branch into production before safe staging D1/R2 and two-device tests.
+
+## Isolated Cloudflare staging provisioned — 21 November 2026
+- Created **new** D1 database `luqyak-v2-staging-20261121` (`b3a0abc1-b79b-4d70-ad3a-f6b5e6e7c2ed`) in APAC. This does not use the production `luqyak-social` D1.
+- Created **new** private R2 bucket `luqyak-v2-staging-photos-20261121`, not production `luqyak-private-photos`.
+- Applied the additive V2 migration to staging D1; verified the 6 V2 schema tables exist. Installed empty synthetic-auth test tables (`users`, `auth_sessions`, `lk_meetups`) with no live user data.
+- Uploaded isolated `luqyak-v2-staging` Worker via Cloudflare API. Verified **version 2** at 100% of the staging Worker deployment on 2026-11-20T23:28:18Z; confirmed its bindings point only at the staging D1/R2.
+- Verified its workers.dev subdomain and previews are **disabled**. The staging Worker has no live public route, login bypass or test-user account.
+- Updated `v2-relay.js` to handle browser requests without Content-Length using bounded streamed reads and to prevent R2 object collisions in upload and viewing copies.
+- Added SQLite-backed encrypted relay receipt lifecycle tests and byte-stream boundary tests, wired into V2 GitHub Actions. They require a fresh successful CI execution before release; these updates have **not yet received a verified passing run** in this follow-up.
+- IMPORTANT: real two-device end-to-end UX remains unverified. Do not merge PR #28 or apply migrations to production yet.
