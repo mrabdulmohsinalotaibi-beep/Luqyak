@@ -67,3 +67,9 @@ CREATE TABLE IF NOT EXISTS lk_v2_meetup_windows (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lk_v2_windows_owner ON lk_v2_meetup_windows(owner_id,upload_ends_at);
+
+CREATE TABLE IF NOT EXISTS lk_v2_share_usage (
+  share_id TEXT PRIMARY KEY,
+  photo_count INTEGER NOT NULL DEFAULT 0,
+  bytes_total INTEGER NOT NULL DEFAULT 0
+);
