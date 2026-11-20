@@ -51,7 +51,13 @@ export async function v2RelayHandler(request,env,ctx){
    if(!['upload','view'].includes(scope))return err(400,'invalid_scope');
    const hours=Number(b.hours);if(!Number.isInteger(hours)||hours<1||hours>720)return err(400,'invalid_hours');
    const id=crypto.randomUUID(),token=random(),expires_at=now()+hours*3600000,canDownload=scope==='view'&&b.allow_pdf===true?1:0;
+   if(scope==='upload'){
+    await env.DB.prepare("INSERT OR IGNORE INTO lk_v2_meetup_windows(meetup_id,owner_id,upload_ends_at,created_at) VALUES(?,?,?,?)").bind(m.id,owner.id,expires_at,now()).run();
+    const w=await env.DB.prepare('SELECT upload_ends_at,closed_at FROM lk_v2_meetup_windows WHERE meetup_id=? AND owner_id=?').bind(m.id,owner.id).first();
+    if(w.closed_at||w.upload_ends_at<=now())return err(410,'upload_window_closed');
+   }
    await env.DB.prepare("INSERT INTO lk_v2_meetup_shares(id,meetup_id,owner_id,scope,token_hash,expires_at,can_download_pdf,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id,m.id,owner.id,scope,await sha(token),expires_at,canDownload,now()).run();
+   if(scope==='upload')await env.DB.prepare('INSERT INTO lk_v2_share_usage(share_id) VALUES(?)').bind(id).run();
    return send({id,scope,token,expires_at},201);
   }
   const end=path.match(/^\/api\/v2\/shares\/([a-f0-9-]{36})\/revoke$/i);
@@ -59,6 +65,29 @@ export async function v2RelayHandler(request,env,ctx){
    if(!owner)return err(401,'login_required');
    await env.DB.prepare('UPDATE lk_v2_meetup_shares SET revoked_at=? WHERE id=? AND owner_id=?').bind(now(),end[1],owner.id).run();
    return send({ok:true});
+  }
+  const extend=path.match(/^\/api\/v2\/shares\/([a-f0-9-]{36})\/extend$/i);
+  if(extend&&method==='POST'){
+   if(!owner)return err(401,'login_required');
+   if(!isJson(request))return err(415,'json_required');
+   const b=await request.json(),hours=Number(b.hours);
+   if(!Number.isInteger(hours)||hours<1||hours>720)return err(400,'invalid_hours');
+   const share=await env.DB.prepare("SELECT id,meetup_id FROM lk_v2_meetup_shares WHERE id=? AND owner_id=? AND scope='upload' AND revoked_at IS NULL").bind(extend[1],owner.id).first();
+   if(!share)return err(404,'share_not_found');
+   const w=await env.DB.prepare('SELECT closed_at FROM lk_v2_meetup_windows WHERE meetup_id=? AND owner_id=?').bind(share.meetup_id,owner.id).first();
+   if(w?.closed_at)return err(410,'meetup_closed');
+   const newEnd=now()+hours*3600000;
+   await env.DB.prepare('UPDATE lk_v2_meetup_windows SET upload_ends_at=? WHERE meetup_id=? AND owner_id=?').bind(newEnd,share.meetup_id,owner.id).run();
+   await env.DB.prepare('UPDATE lk_v2_meetup_shares SET expires_at=? WHERE id=? AND owner_id=?').bind(newEnd,share.id,owner.id).run();
+   return send({ok:true,expires_at:newEnd});
+  }
+  const close=path.match(/^\/api\/v2\/meetups\/([a-f0-9-]{36})\/close$/i);
+  if(close&&method==='POST'){
+   if(!owner)return err(401,'login_required');
+   const m=await meetup(env,close[1],owner.id);if(!m)return err(404,'meetup_not_found');
+   await env.DB.prepare('UPDATE lk_v2_meetup_windows SET closed_at=? WHERE meetup_id=? AND owner_id=?').bind(now(),m.id,owner.id).run();
+   await env.DB.prepare("UPDATE lk_v2_meetup_shares SET revoked_at=? WHERE meetup_id=? AND owner_id=? AND scope='upload' AND revoked_at IS NULL").bind(now(),m.id,owner.id).run();
+   return send({ok:true,view_links_unaffected:true});
   }
   const viewUpload=path.match(/^\/api\/v2\/meetups\/([a-f0-9-]{36})\/view-photos$/i);
   if(viewUpload&&method==='POST'){
@@ -118,6 +147,8 @@ export async function v2RelayHandler(request,env,ctx){
    if(!c)return err(403,'link_invalid');
    const m=await env.DB.prepare('SELECT id,ended FROM lk_meetups WHERE id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
    if(!m||m.ended)return err(410,'meetup_closed');
+   const window=await env.DB.prepare('SELECT upload_ends_at,closed_at FROM lk_v2_meetup_windows WHERE meetup_id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
+   if(!window||window.closed_at||window.upload_ends_at<=now())return err(410,'upload_window_closed');
    const id=request.headers.get('x-luqyak-photo-id'),deviceId=request.headers.get('x-luqyak-device-id');
    const checksum=request.headers.get('x-luqyak-sha256');
    const iv=request.headers.get('x-luqyak-iv'),wrapped=request.headers.get('x-luqyak-wrapped-key');
@@ -125,7 +156,7 @@ export async function v2RelayHandler(request,env,ctx){
    const device=await env.DB.prepare('SELECT device_id FROM lk_v2_device_keys WHERE device_id=? AND owner_id=? AND revoked_at IS NULL').bind(deviceId,c.owner_id).first();
    if(!device)return err(403,'device_invalid');
    const length=Number(request.headers.get('content-length'));
-   if(!Number.isFinite(length)||length<17||length>30*1024*1024+16)return err(413,'size_invalid');
+   if(!Number.isFinite(length)||length<17||length>15*1024*1024+16)return err(413,'size_invalid');
    const existing=await env.DB.prepare('SELECT photo_id,ciphertext_sha256 FROM lk_v2_photo_queue WHERE photo_id=?').bind(id).first();
    if(existing)return existing.ciphertext_sha256===checksum?send({ok:true,id,existing:true}):err(409,'photo_id_conflict');
    const bytes=await request.arrayBuffer();
@@ -133,10 +164,16 @@ export async function v2RelayHandler(request,env,ctx){
    const actual=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');
    if(actual!==checksum.toLowerCase())return err(400,'checksum_mismatch');
    const key='v2-pending/'+c.owner_id+'/'+id+'.bin',expires=now()+7*86400000;
-   await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType:'application/octet-stream'}});
+   const usage=await env.DB.prepare('UPDATE lk_v2_share_usage SET photo_count=photo_count+1,bytes_total=bytes_total+? WHERE share_id=? AND photo_count<100 AND bytes_total+?<=524288000').bind(bytes.byteLength,c.id,bytes.byteLength).run();
+   if(!usage.meta?.changes)return err(429,'upload_quota_reached');
    try{
-    await env.DB.prepare("INSERT INTO lk_v2_photo_queue(photo_id,meetup_id,owner_id,recipient_device_id,storage_key,ciphertext_sha256,wrapped_key,iv,version,status,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,1,'queued',?,?)").bind(id,c.meetup_id,c.owner_id,deviceId,key,checksum.toLowerCase(),wrapped,iv,now(),expires).run();
-   }catch(e){await env.PHOTOS.delete(key);throw e}
+    await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType:'application/octet-stream'}});
+    await env.DB.prepare("INSERT INTO lk_v2_photo_queue(photo_id,share_id,size_bytes,meetup_id,owner_id,recipient_device_id,storage_key,ciphertext_sha256,wrapped_key,iv,version,status,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,'queued',?,?)").bind(id,c.id,bytes.byteLength,c.meetup_id,c.owner_id,deviceId,key,checksum.toLowerCase(),wrapped,iv,now(),expires).run();
+   }catch(e){
+    await env.PHOTOS.delete(key).catch(()=>{});
+    await env.DB.prepare('UPDATE lk_v2_share_usage SET photo_count=MAX(0,photo_count-1),bytes_total=MAX(0,bytes_total-?) WHERE share_id=?').bind(bytes.byteLength,c.id).run().catch(()=>{});
+    throw e;
+   }
    return send({ok:true,id,status:'queued'},201);
   }
   if(path==='/api/v2/deliveries'&&method==='GET'){
