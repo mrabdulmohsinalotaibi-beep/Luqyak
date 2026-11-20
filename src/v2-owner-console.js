@@ -43,6 +43,46 @@ $('share').onclick=async()=>{
  }catch(e){say(e.message)}
 };
 $('copy').onclick=async()=>{try{if(!$('link').value)return say('أنشئ رابطًا أولًا');await navigator.clipboard.writeText($('link').value);say('تم نسخ رابط التصوير.')}catch(e){say('انسخ الرابط يدويًا من الخانة.')}};
+const b64=b=>{const u=new Uint8Array(b);let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode(...u.subarray(i,i+8192));return btoa(s)};
+const base64url=b=>b64(b).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const inferType=bytes=>bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':bytes[0]===82&&bytes[1]===73&&bytes[2]===70?'image/webp':null;
+$('shareView').onclick=async()=>{
+ let db;
+ try{
+  $('shareView').disabled=true;
+  const id=meetupId(),hours=Number($('viewDuration').value);
+  db=await openOwnerStore();
+  const tx=db.transaction('photos','readonly'),req=tx.objectStore('photos').getAll();
+  const items=await new Promise((ok,no)=>{req.onsuccess=()=>ok(req.result);req.onerror=()=>no(req.error)});
+  const photos=items.filter(x=>x.meetupId===id).sort((a,b)=>a.savedAt-b.savedAt).slice(0,100);
+  if(!photos.length)throw Error('استلم صور اللقاء على جهازك أولًا قبل مشاركة الألبوم');
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt']);
+  const secret=await crypto.subtle.exportKey('raw',key);
+  const share=await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/shares',formBody({scope:'view',hours,allow_pdf:$('allowPdf').checked}));
+  try{
+   for(let i=0;i<photos.length;i++){
+    const raw=new Uint8Array(await photos[i].bytes.arrayBuffer()),type=inferType(raw);
+    if(!type)throw Error('صيغة صورة غير مدعومة ضمن الألبوم');
+    const photoId=crypto.randomUUID(),iv=crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(id+':'+photoId)},key,raw);
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',ciphertext))].map(x=>x.toString(16).padStart(2,'0')).join('');
+    const resp=await fetch('/api/v2/meetups/'+encodeURIComponent(id)+'/view-photos?share_id='+encodeURIComponent(share.id),{
+     method:'POST',credentials:'same-origin',headers:{'content-type':'application/octet-stream','x-luqyak-photo-id':photoId,
+       'x-luqyak-iv':b64(iv),'x-luqyak-sha256':hash,'x-luqyak-media-type':type},body:ciphertext
+    });
+    if(!resp.ok)throw Error('تعذر إعداد الصورة رقم '+(i+1));
+    say('تجهيز رابط المشاهدة: '+(i+1)+' من '+photos.length);
+   }
+   $('viewLink').value=location.origin+'/v2/view/'+share.token+'#key='+base64url(secret);
+   say('رابط الألبوم جاهز للمشاهدة فقط؛ يحتفظ الوسيط بنسخ مشفّرة حتى انتهاء الصلاحية.');
+  }catch(e){
+   await fetchJson('/api/v2/shares/'+encodeURIComponent(share.id)+'/revoke',formBody({})).catch(()=>{});
+   throw e;
+  }
+ }catch(e){say(e.message)}finally{db?.close();$('shareView').disabled=false}
+};
+$('copyView').onclick=async()=>{try{if(!$('viewLink').value)return say('أنشئ رابط المشاهدة أولًا');await navigator.clipboard.writeText($('viewLink').value);say('تم نسخ رابط المشاهدة.')}catch(e){say('يمكن نسخ رابط المشاهدة يدويًا')}};
+
 $('exportPdf').onclick=async()=>{
  let db;
  try{
