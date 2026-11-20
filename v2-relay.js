@@ -47,6 +47,7 @@ export async function v2RelayHandler(request,env,ctx){
    const m=await meetup(env,create[1],owner.id);if(!m)return err(404,'meetup_not_found');
    if(!isJson(request))return err(415,'json_required');
    const b=await request.json(),scope=b.scope;
+   if(scope==='upload'&&m.ended)return err(410,'meetup_closed');
    if(!['upload','view'].includes(scope))return err(400,'invalid_scope');
    const hours=Number(b.hours);if(!Number.isInteger(hours)||hours<1||hours>720)return err(400,'invalid_hours');
    const id=crypto.randomUUID(),token=random(),expires_at=now()+hours*3600000;
@@ -58,6 +59,15 @@ export async function v2RelayHandler(request,env,ctx){
    if(!owner)return err(401,'login_required');
    await env.DB.prepare('UPDATE lk_v2_meetup_shares SET revoked_at=? WHERE id=? AND owner_id=?').bind(now(),end[1],owner.id).run();
    return send({ok:true});
+  }
+  if(path==='/api/v2/inbox/info'&&method==='GET'){
+   const c=await capability(env,url.searchParams.get('token'),'upload');
+   if(!c)return err(403,'link_invalid');
+   const meeting=await env.DB.prepare('SELECT ended FROM lk_meetups WHERE id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
+   if(!meeting||meeting.ended)return err(410,'meetup_closed');
+   const d=await env.DB.prepare('SELECT device_id,public_key_spki FROM lk_v2_device_keys WHERE owner_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1').bind(c.owner_id).first();
+   if(!d)return err(409,'recipient_device_unavailable');
+   return send({meetup_id:c.meetup_id,device_id:d.device_id,public_key_spki:d.public_key_spki,expires_at:c.expires_at});
   }
   if(path==='/api/v2/inbox/upload'&&method==='POST'){
    const c=await capability(env,url.searchParams.get('token'),'upload');
