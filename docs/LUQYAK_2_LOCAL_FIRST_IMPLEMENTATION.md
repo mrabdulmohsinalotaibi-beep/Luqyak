@@ -78,3 +78,12 @@ Feature-complete **development implementation** with isolated routes for owner, 
 - Encrypted photo backups now retain envelope metadata (version, IV, wrapped key and ciphertext SHA-256) so restoration does not store plaintext.
 - Additional focused tests verify account isolation, encrypted-at-rest contract, legacy copy behavior, and repeatable D1 migration.
 - IMPORTANT: this feature branch has **not** been deployed or its migration applied to the production D1/R2. Tests do not replace browser-device QA.
+
+## LUQYAK ATELIER full-site redesign — 2026-11-20
+- Premium matte charcoal, warm ivory and muted gold visual palette applied through one shared stylesheet on the main app, notification centre, private area, owner console, guest capture and encrypted album viewer.
+- Layout components: photo-led hero, quick actions, image feed, square 3-column memories, meetups, account sections, sticky blurred top bar, floating accessible bottom navigation, inputs, cards and buttons.
+- On the main app, replace obsolete bottom-navigation chats tab with Memories and add a direct local photo vault shortcut on the homepage. Older relationship features remain available via their existing controls; no records deleted.
+- Respect reduced-motion preferences, keyboard focus, safe areas, phone and tablet breakpoints. Preserve existing brand logo image; do not introduce external fonts or CDNs.
+- New focused design tests ensure theme delivery, correct main-route integration, actual Memories navigation and v2 return paths.
+- Focused GitHub workflow passed at commit 8479171a8e88d07cd4d789a0f990049b88583dbd. General legacy test suite still fails; live phone/tablet visual validation not performed.
+- **Not deployed.** Do not merge the combined V2 branch into production before safe staging D1/R2 and two-device tests.
