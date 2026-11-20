@@ -1,5 +1,8 @@
 name: Luqyak v2 focused security and build
 on:
+  push:
+    branches:
+      - feature/local-first-encrypted-delivery
   pull_request:
     paths:
       - 'src/v2-*.js'
