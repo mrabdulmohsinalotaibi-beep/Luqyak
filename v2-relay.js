@@ -1,3 +1,4 @@
+import {readBoundedBody} from './v2-bounded-body.js';
 // LUQYAK v2 relay: isolated additive API, not a migration of legacy photos.
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'};
 const send=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
@@ -101,12 +102,13 @@ export async function v2RelayHandler(request,env,ctx){
    if(!share)return err(403,'view_link_invalid');
    const count=await env.DB.prepare("SELECT COUNT(*) n FROM lk_v2_view_packages WHERE share_id=?").bind(shareId).first();
    if(count.n>=100)return err(429,'view_package_limit');
-   const len=Number(request.headers.get('content-length'));
-   if(!Number.isFinite(len)||len<17||len>16*1024*1024)return err(413,'size_invalid');
+   const len=request.headers.get('content-length');
+   if(len!==null&&(!Number.isSafeInteger(Number(len))||Number(len)<17||Number(len)>16*1024*1024))return err(413,'size_invalid');
    const exists=await env.DB.prepare('SELECT id,ciphertext_sha256 FROM lk_v2_view_packages WHERE id=?').bind(photoId).first();
    if(exists)return exists.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id:photoId,existing:true}):err(409,'photo_id_conflict');
-   const binary=await request.arrayBuffer();
-   if(binary.byteLength!==len)return err(400,'length_mismatch');
+   let binary;
+   try{binary=await readBoundedBody(request,16*1024*1024)}catch(e){return err(e instanceof RangeError?413:400,'size_invalid')}
+   if(binary.byteLength<17)return err(400,'size_invalid');
    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',binary))].map(x=>x.toString(16).padStart(2,'0')).join('');
    if(hash!==checksum.toLowerCase())return err(400,'checksum_mismatch');
    const key='v2-view/'+shareId+'/'+photoId+'.bin';
@@ -157,12 +159,13 @@ export async function v2RelayHandler(request,env,ctx){
    if(!UUID.test(id||'')||!UUID.test(deviceId||'')||!HEX.test(checksum||'')||!validBytes(iv,12,40)||!validBytes(wrapped,200,1000))return err(400,'invalid_envelope');
    const device=await env.DB.prepare('SELECT device_id FROM lk_v2_device_keys WHERE device_id=? AND owner_id=? AND revoked_at IS NULL').bind(deviceId,c.owner_id).first();
    if(!device)return err(403,'device_invalid');
-   const length=Number(request.headers.get('content-length'));
-   if(!Number.isFinite(length)||length<17||length>15*1024*1024+16)return err(413,'size_invalid');
+   const length=request.headers.get('content-length');
+   if(length!==null&&(!Number.isSafeInteger(Number(length))||Number(length)<17||Number(length)>15*1024*1024+16))return err(413,'size_invalid');
    const existing=await env.DB.prepare('SELECT photo_id,ciphertext_sha256,share_id FROM lk_v2_photo_queue WHERE photo_id=?').bind(id).first();
    if(existing)return existing.share_id===c.id && existing.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id,existing:true}):err(409,'photo_id_conflict');
-   const bytes=await request.arrayBuffer();
-   if(bytes.byteLength!==length)return err(400,'length_mismatch');
+   let bytes;
+   try{bytes=await readBoundedBody(request,15*1024*1024+16)}catch(e){return err(e instanceof RangeError?413:400,'size_invalid')}
+   if(bytes.byteLength<17)return err(400,'size_invalid');
    const actual=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');
    if(actual!==checksum.toLowerCase())return err(400,'checksum_mismatch');
    const key='v2-pending/'+c.owner_id+'/'+id+'.bin',expires=now()+7*86400000;
