@@ -58,8 +58,9 @@ export async function getDecryptedOwnerPhotos({meetupId,privateKey,onProgress=()
   const envelope={version:p.version,meetupId:p.meetupId,photoId:p.id,ciphertext:await p.bytes.arrayBuffer(),
    iv:b64(p.iv),wrappedKey:b64(p.wrappedKey),sha256:p.ciphertextSha256};
   if(!await validateDelivery(envelope))throw new Error('Encrypted photo integrity error: '+p.id);
-  const plain=await openPhoto(envelope,privateKey);
-  out.push({...p,bytes:new Blob([plain],{type:'image/jpeg'})});
+  const plain=await openPhoto(envelope,privateKey),sample=new Uint8Array(plain);
+  const type=sample[0]===255&&sample[1]===216?'image/jpeg':sample[0]===137&&sample[1]===80?'image/png':sample[0]===82&&sample[1]===73&&sample[2]===70?'image/webp':'application/octet-stream';
+  out.push({...p,bytes:new Blob([plain],{type})});
   onProgress({done:i+1,total:subset.length});
  }
  return out;
