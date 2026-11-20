@@ -13,7 +13,10 @@ async function register(record){
 }
 async function init(){
  identity=await getStoredIdentity();
- say(identity?'هذا الجهاز يحتوي على مفتاح محمي. افتحه بعبارة الحماية لاستلام الصور.':'أنشئ مفتاحًا لهذا الجهاز ثم حمّل نسخته الاحتياطية المشفرة قبل مشاركة أي رابط.');
+ if(identity){
+  try{await register(identity);say('تم التعرف على مفتاح هذا الجهاز وربطه بالحساب. افتحه بعبارة الحماية لاستلام الصور.')}
+  catch(e){say('مفتاح الجهاز محفوظ محليًا. تعذر ربطه حاليًا؛ استخدم زر إعادة تسجيل الجهاز.')}
+ }else say('أنشئ مفتاحًا لهذا الجهاز ثم حمّل نسخته الاحتياطية المشفرة قبل مشاركة أي رابط.');
 }
 $('createDevice').onclick=async()=>{
  const pass=$('passphrase').value;
@@ -24,6 +27,10 @@ $('createDevice').onclick=async()=>{
   $('passphrase').value='';
   say('تم إنشاء مفتاح الجهاز وتسجيل مفتاحه العام. احفظ النسخة الاحتياطية المشفرة الآن.');
  }catch(e){say(e.message)}finally{$('createDevice').disabled=false}
+};
+$('registerDevice').onclick=async()=>{
+ try{const doc=await getStoredIdentity();if(!doc)throw Error('أنشئ مفتاح الجهاز أولًا');await register(doc);identity=doc;say('تم ربط المفتاح العام لهذا الجهاز بالحساب دون تغيير المفتاح الخاص.')}
+ catch(e){say(e.message)}
 };
 $('backup').onclick=async()=>{try{saveBlob(await exportEncryptedIdentity(),'luqyak-device-backup-encrypted.json');say('احفظ النسخة المشفرة بمكان آمن؛ يلزم معها تذكر عبارة الحماية.')}catch(e){say(e.message)}};
 $('restore').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const doc=await restoreEncryptedIdentity(await f.text());identity=doc;await register(doc);say('تم استعادة المفتاح المشفر وتسجيل الجهاز.')}catch(e){say(e.message)}finally{e.target.value=''}};
