@@ -12,6 +12,7 @@ on:
       - 'migrations/20261120_local_first_v2.sql'
       - 'tests/v2-*.test.mjs'
       - 'tests/v2-migration-smoke.py'
+      - 'tests/v2-end-to-end.test.mjs'
       - 'tests/secure-photo-envelope.test.mjs'
       - '.github/workflows/v2-focused.yml'
   workflow_dispatch:
@@ -37,4 +38,4 @@ jobs:
       - name: Verify safe non-destructive D1 migration
         run: python3 tests/v2-migration-smoke.py
       - name: Focused v2 behavior and encryption tests
-        run: node --test tests/secure-photo-envelope.test.mjs tests/v2-relay-contracts.test.mjs tests/v2-local-privacy.test.mjs tests/v2-theme-contract.test.mjs
+        run: node --test tests/secure-photo-envelope.test.mjs tests/v2-relay-contracts.test.mjs tests/v2-local-privacy.test.mjs tests/v2-theme-contract.test.mjs tests/v2-end-to-end.test.mjs
