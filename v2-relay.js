@@ -93,7 +93,7 @@ export async function v2RelayHandler(request,env,ctx){
    const meetupRow=await env.DB.prepare('SELECT title FROM lk_meetups WHERE id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
    if(!meetupRow)return err(404,'meetup_not_found');
    const rows=await env.DB.prepare("SELECT id,iv,media_type,ciphertext_sha256 FROM lk_v2_view_packages WHERE share_id=? AND expires_at>? AND revoked_at IS NULL ORDER BY created_at LIMIT 100").bind(c.id,now()).all();
-   return send({title:meetupRow.title,items:rows.results,can_download_pdf:c.can_download_pdf===1,expires_at:c.expires_at});
+   return send({title:meetupRow.title,meetup_id:c.meetup_id,items:rows.results,can_download_pdf:c.can_download_pdf===1,expires_at:c.expires_at});
   }
   if(path==='/api/v2/view/photo'&&method==='GET'){
    const c=await capability(env,url.searchParams.get('token'),'view');
