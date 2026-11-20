@@ -1,5 +1,5 @@
 import {getStoredIdentity,createStoredIdentity,unlockStoredIdentity,exportEncryptedIdentity,restoreEncryptedIdentity} from './v2-device-vault.js';
-import {receivePending,openOwnerStore} from './local-owner-inbox.js';
+import {receivePending,getDecryptedOwnerPhotos} from './local-owner-inbox.js';
 import {createLocalPdfVolumes} from './v2-local-pdf.js';
 import {exportEncryptedPhotoBackup,importEncryptedPhotoBackup} from './v2-local-backup.js';
 import {importLegacyMeetupPhotos} from './v2-legacy-import.js';
@@ -94,10 +94,8 @@ $('shareView').onclick=async()=>{
  try{
   $('shareView').disabled=true;
   const id=meetupId(),hours=Number($('viewDuration').value);
-  db=await openOwnerStore();
-  const tx=db.transaction('photos','readonly'),req=tx.objectStore('photos').getAll();
-  const items=await new Promise((ok,no)=>{req.onsuccess=()=>ok(req.result);req.onerror=()=>no(req.error)});
-  const photos=items.filter(x=>x.meetupId===id).sort((a,b)=>a.savedAt-b.savedAt).slice(0,100);
+  if(!unlockedIdentity)throw Error('افتح مفتاح الجهاز لاستعراض الألبوم ومشاركة الصور');
+  const photos=(await getDecryptedOwnerPhotos({meetupId:id,privateKey:unlockedIdentity.privateKey})).slice(0,100);
   if(!photos.length)throw Error('استلم صور اللقاء على جهازك أولًا قبل مشاركة الألبوم');
   const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt']);
   const secret=await crypto.subtle.exportKey('raw',key);
@@ -160,10 +158,9 @@ $('exportPdf').onclick=async()=>{
  let db;
  try{
   $('exportPdf').disabled=true;
-  const id=meetupId();db=await openOwnerStore();
-  const tx=db.transaction('photos','readonly'),req=tx.objectStore('photos').getAll();
-  const items=await new Promise((ok,no)=>{req.onsuccess=()=>ok(req.result);req.onerror=()=>no(req.error)});
-  const local=items.filter(item=>item.meetupId===id).sort((a,b)=>a.savedAt-b.savedAt);
+  const id=meetupId();
+  if(!unlockedIdentity)throw Error('افتح مفتاح الجهاز أولًا لإنشاء PDF من صورك المشفرة');
+  const local=await getDecryptedOwnerPhotos({meetupId:id,privateKey:unlockedIdentity.privateKey});
   if(!local.length)throw Error('لا توجد صور محفوظة لهذا اللقاء على هذا الجهاز');
   const docs=await createLocalPdfVolumes({title:$('title').value||'ذكريات اللقاء',photos:local,onProgress:p=>say('إنشاء PDF: '+p.done+' من '+p.total)});
   const out=$('pdfLinks');out.replaceChildren();
