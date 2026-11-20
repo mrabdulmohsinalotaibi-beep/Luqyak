@@ -1,7 +1,7 @@
 # LUQYAK 2.0 — local-first encrypted meetup delivery
 
 ## Status (2026-11-20)
-Foundation only. NOT enabled in production or wired to existing upload API. Existing accounts, meetings, photos and R2 objects are untouched.
+Feature-complete **development implementation** with isolated routes for owner, guest upload, view-only album, local photo backup and A4 PDF. NOT DEPLOYED: the additive migration is intentionally unapplied, existing accounts/meetings/photos/R2 objects remain untouched, and live end-to-end device testing remains mandatory.
 
 ## Verified repository architecture
 - Cloudflare Worker entry: `worker.js`
@@ -35,3 +35,22 @@ Foundation only. NOT enabled in production or wired to existing upload API. Exis
 - No production migration, R2 deletion, automatic deploy, or claim of end-to-end delivery until integration tests and backup restore pass.
 - Avoid exposing share tokens in logs, analytics, referer or error reports. Use Referrer-Policy: no-referrer and no-store.
 - Confirm that the current scheduler only removes queue rows and not necessarily R2 objects; build R2 object deletion in a separate verified cleanup routine.
+
+## Development routes (available only after explicit migration and preview deployment)
+- `/v2/owner`: owner device enrollment, encrypted key backup, sharing, receive, PDF, encrypted photo backup/restore.
+- `/v2/upload/<64-hex-token>`: upload-only WhatsApp camera/gallery form; guest never sees album photos.
+- `/v2/view/<64-hex-token>#key=<url-safe-key>`: view-only time-limited encrypted album; PDF only if owner allowed it.
+
+## Staging gate
+1. Snapshot the current D1 and R2 state and prove restore works.
+2. Provision an isolated staging D1 + R2 for v2; do not point preview at live production photo bucket.
+3. Apply `migrations/20261120_local_first_v2.sql` to staging only, then run two-device end-to-end tests.
+4. Verify encrypted guest uploads using camera and gallery, roundtrip on owner's phone, local save after reload, and no receipt before durable save.
+5. Verify share expiry, early closure, extension, 100-photo/500MB limits, R2 cleanup after ack, temporary view-copy deletion and PDF split files.
+6. Verify restore of local photos + owner encryption key after clearing a test browser; never clear real existing data.
+7. Audit existing user data migration: legacy photos are **not automatically transferred to local storage by this branch**.
+8. Only after tests pass, decide whether to merge, migrate production, and roll out via a reversible feature flag.
+
+## Current test status
+- Focused GitHub Actions `Luqyak v2 focused security and build` passed with encrypted roundtrip and security routing checks.
+- General repository legacy suites remain failing due to unrelated retained expectations (retired chat flows, older brand palette and legacy response mocks), so merge/deployment is blocked.
