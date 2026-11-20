@@ -2,11 +2,20 @@
 // Private key is supplied by an unlocked owner and is never persisted here.
 import {openPhoto,validateDelivery} from './secure-photo-envelope.js';
 const DATABASE='luqyak-v2-local-owner',VERSION=1;
+async function currentAccount(){
+ const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+ if(!response.ok)throw new Error('Login required for private storage');
+ const body=await response.json();
+ const id=body?.user?.id;
+ if(!body.authenticated||typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(id))throw new Error('Authenticated account required');
+ return id;
+}
 const b64=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 function requestDone(r){return new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 function transactionDone(tx){return new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Transaction aborted'))})}
 export async function openOwnerStore(){
- const r=indexedDB.open(DATABASE,VERSION);
+ const accountId=await currentAccount();
+ const r=indexedDB.open(DATABASE+':'+accountId,VERSION);
  r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains('photos'))db.createObjectStore('photos',{keyPath:'id'});if(!db.objectStoreNames.contains('meetups'))db.createObjectStore('meetups',{keyPath:'id'})};
  return requestDone(r);
 }
