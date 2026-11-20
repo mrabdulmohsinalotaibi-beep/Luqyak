@@ -38,6 +38,7 @@ $('share').onclick=async()=>{
   if(!identity)throw Error('أنشئ مفتاح هذا الجهاز أولًا');
   const id=meetupId(),hours=Number($('duration').value);
   const link=await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/shares',formBody({scope:'upload',hours}));
+  localStorage.setItem('luqyak:v2:last-share:'+id,link.id);
   const address=location.origin+'/v2/upload/'+link.token;
   $('link').value=address;say('رابط التصوير صالح حتى '+new Date(link.expires_at).toLocaleString('ar-SA'));
  }catch(e){say(e.message)}
@@ -46,6 +47,22 @@ $('copy').onclick=async()=>{try{if(!$('link').value)return say('أنشئ راب�
 const b64=b=>{const u=new Uint8Array(b);let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode(...u.subarray(i,i+8192));return btoa(s)};
 const base64url=b=>b64(b).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
 const inferType=bytes=>bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':bytes[0]===82&&bytes[1]===73&&bytes[2]===70?'image/webp':null;
+$('extend').onclick=async()=>{
+ try{
+  const id=meetupId(),shareId=localStorage.getItem('luqyak:v2:last-share:'+id);
+  if(!shareId)throw Error('أنشئ رابط التصوير أولًا على هذا الجهاز');
+  const out=await fetchJson('/api/v2/shares/'+encodeURIComponent(shareId)+'/extend',formBody({hours:Number($('duration').value)}));
+  say('تم تمديد استقبال الصور حتى '+new Date(out.expires_at).toLocaleString('ar-SA')+'. سيبقى الرابط السابق صالحًا.');
+ }catch(e){say(e.message)}
+};
+$('close').onclick=async()=>{
+ try{
+  const id=meetupId();
+  if(!confirm('هل تريد إيقاف استقبال صور جديدة لهذا اللقاء؟ ستظل الصور المرسلة سابقًا في قائمة الاستلام.'))return;
+  await fetchJson('/api/v2/meetups/'+encodeURIComponent(id)+'/close',formBody({}));
+  say('تم إغلاق استقبال الصور. روابط المشاهدة الحالية لا تتأثر.');
+ }catch(e){say(e.message)}
+};
 $('shareView').onclick=async()=>{
  let db;
  try{
