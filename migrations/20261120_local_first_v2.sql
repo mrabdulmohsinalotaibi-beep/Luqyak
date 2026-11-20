@@ -25,6 +25,8 @@ CREATE INDEX IF NOT EXISTS idx_lk_v2_share_meetup ON lk_v2_meetup_shares(meetup_
 
 CREATE TABLE IF NOT EXISTS lk_v2_photo_queue (
   photo_id TEXT PRIMARY KEY,
+  share_id TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
   meetup_id TEXT NOT NULL,
   owner_id TEXT NOT NULL,
   recipient_device_id TEXT NOT NULL,
@@ -55,3 +57,13 @@ CREATE TABLE IF NOT EXISTS lk_v2_view_packages (
   revoked_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_lk_v2_view_expiry ON lk_v2_view_packages(expires_at,revoked_at);
+
+-- Owner-controlled upload window, independent of the legacy meetup archive.
+CREATE TABLE IF NOT EXISTS lk_v2_meetup_windows (
+  meetup_id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  upload_ends_at INTEGER NOT NULL,
+  closed_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_lk_v2_windows_owner ON lk_v2_meetup_windows(owner_id,upload_ends_at);
