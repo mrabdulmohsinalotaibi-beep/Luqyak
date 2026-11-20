@@ -23,7 +23,7 @@ export async function cleanupAcknowledgedV2(env){
  }
  let expiredViewPackages=0;
  try{
-  const views=(await env.DB.prepare('SELECT id,object_key FROM lk_v2_view_packages WHERE expires_at<=? OR revoked_at IS NOT NULL LIMIT 50').bind(Date.now()).all()).results;
+  const views=(await env.DB.prepare('SELECT p.id,p.object_key FROM lk_v2_view_packages p LEFT JOIN lk_v2_meetup_shares s ON s.id=p.share_id WHERE p.expires_at<=? OR p.revoked_at IS NOT NULL OR s.revoked_at IS NOT NULL LIMIT 50').bind(Date.now()).all()).results;
   for(const view of views){
    try{
     await env.PHOTOS.delete(view.object_key);
