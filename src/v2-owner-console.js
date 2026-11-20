@@ -45,7 +45,7 @@ $('share').onclick=async()=>{
 };
 $('copy').onclick=async()=>{try{if(!$('link').value)return say('أنشئ رابطًا أولًا');await navigator.clipboard.writeText($('link').value);say('تم نسخ رابط التصوير.')}catch(e){say('انسخ الرابط يدويًا من الخانة.')}};
 const b64=b=>{const u=new Uint8Array(b);let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode(...u.subarray(i,i+8192));return btoa(s)};
-const base64url=b=>b64(b).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const base64url=b=>b64(b).split('+').join('-').split('/').join('_').replace(/=+$/,'');
 const inferType=bytes=>bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':bytes[0]===82&&bytes[1]===73&&bytes[2]===70?'image/webp':null;
 $('extend').onclick=async()=>{
  try{
