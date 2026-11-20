@@ -1,12 +1,20 @@
 // Owner keys live only in encrypted local browser storage, never in Cloudflare.
 import {generateDeviceIdentity} from './secure-photo-envelope.js';
 const DB='luqyak-v2-key-vault';
+async function currentAccount(){
+ const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+ if(!response.ok)throw new Error('سجّل الدخول لحماية مفاتيح الحساب');
+ const body=await response.json(),id=body?.user?.id;
+ if(!body.authenticated||typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(id))throw new Error('الحساب غير مسجل الدخول');
+ return id;
+}
 const encoder=new TextEncoder();
 const b64=b=>{const bytes=new Uint8Array(b);let out='';for(let i=0;i<bytes.length;i+=8192)out+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(out)};
 const unb64=s=>Uint8Array.from(atob(s),x=>x.charCodeAt(0));
 function req(r){return new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 async function db(){
- const r=indexedDB.open(DB,1);
+ const id=await currentAccount();
+ const r=indexedDB.open(DB+':'+id,1);
  r.onupgradeneeded=()=>r.result.createObjectStore('keys',{keyPath:'id'});
  return req(r);
 }
