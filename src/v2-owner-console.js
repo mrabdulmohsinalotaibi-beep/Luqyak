@@ -2,6 +2,7 @@ import {getStoredIdentity,createStoredIdentity,unlockStoredIdentity,exportEncryp
 import {receivePending,openOwnerStore} from './local-owner-inbox.js';
 import {createLocalPdfVolumes} from './v2-local-pdf.js';
 import {exportEncryptedPhotoBackup,importEncryptedPhotoBackup} from './v2-local-backup.js';
+import {importLegacyMeetupPhotos} from './v2-legacy-import.js';
 const $=id=>document.getElementById(id),say=t=>{$('status').textContent=t};
 let identity;
 const fetchJson=async(url,options={})=>{const r=await fetch(url,{credentials:'same-origin',cache:'no-store',...options}),b=await r.json().catch(()=>({}));if(!r.ok)throw Error(b.error||'تعذر تنفيذ الطلب');return b};
@@ -125,6 +126,15 @@ $('shareView').onclick=async()=>{
 };
 $('copyView').onclick=async()=>{try{if(!$('viewLink').value)return say('أنشئ رابط المشاهدة أولًا');await navigator.clipboard.writeText($('viewLink').value);say('تم نسخ رابط المشاهدة.')}catch(e){say('يمكن نسخ رابط المشاهدة يدويًا')}};
 
+$('importLegacy').onclick=async()=>{
+ try{
+  $('importLegacy').disabled=true;
+  const id=meetupId();
+  const out=await importLegacyMeetupPhotos({meetupId:id,onProgress:p=>say('نقل صور اللقاء القديمة: '+p.done+' من '+p.total+' — المحفوظة: '+p.copied+'، المتجاوزة: '+p.skipped+'، المتعذرة: '+p.failed)});
+  say('انتهى نسخ الصور السابقة إلى الجهاز. نُسخ '+out.copied+'، موجود مسبقًا '+out.skipped+'، تعذّر '+out.failed+'. لم تُحذف أي صورة أصلية من الموقع.');
+ }catch(e){say('تعذر استيراد الصور السابقة: '+e.message)}
+ finally{$('importLegacy').disabled=false}
+};
 $('backupPhotos').onclick=async()=>{
  try{
   $('backupPhotos').disabled=true;const id=meetupId();
