@@ -50,8 +50,8 @@ export async function v2RelayHandler(request,env,ctx){
    if(scope==='upload'&&m.ended)return err(410,'meetup_closed');
    if(!['upload','view'].includes(scope))return err(400,'invalid_scope');
    const hours=Number(b.hours);if(!Number.isInteger(hours)||hours<1||hours>720)return err(400,'invalid_hours');
-   const id=crypto.randomUUID(),token=random(),expires_at=now()+hours*3600000;
-   await env.DB.prepare("INSERT INTO lk_v2_meetup_shares(id,meetup_id,owner_id,scope,token_hash,expires_at,created_at) VALUES(?,?,?,?,?,?,?)").bind(id,m.id,owner.id,scope,await sha(token),expires_at,now()).run();
+   const id=crypto.randomUUID(),token=random(),expires_at=now()+hours*3600000,canDownload=scope==='view'&&b.allow_pdf===true?1:0;
+   await env.DB.prepare("INSERT INTO lk_v2_meetup_shares(id,meetup_id,owner_id,scope,token_hash,expires_at,can_download_pdf,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id,m.id,owner.id,scope,await sha(token),expires_at,canDownload,now()).run();
    return send({id,scope,token,expires_at},201);
   }
   const end=path.match(/^\/api\/v2\/shares\/([a-f0-9-]{36})\/revoke$/i);
@@ -59,6 +59,50 @@ export async function v2RelayHandler(request,env,ctx){
    if(!owner)return err(401,'login_required');
    await env.DB.prepare('UPDATE lk_v2_meetup_shares SET revoked_at=? WHERE id=? AND owner_id=?').bind(now(),end[1],owner.id).run();
    return send({ok:true});
+  }
+  const viewUpload=path.match(/^\/api\/v2\/meetups\/([a-f0-9-]{36})\/view-photos$/i);
+  if(viewUpload&&method==='POST'){
+   if(!owner)return err(401,'login_required');
+   const m=await meetup(env,viewUpload[1],owner.id);if(!m)return err(404,'meetup_not_found');
+   const shareId=url.searchParams.get('share_id'),photoId=request.headers.get('x-luqyak-photo-id');
+   const iv=request.headers.get('x-luqyak-iv'),checksum=request.headers.get('x-luqyak-sha256');
+   const type=request.headers.get('x-luqyak-media-type');
+   if(!UUID.test(shareId||'')||!UUID.test(photoId||'')||!validBytes(iv,12,40)||!HEX.test(checksum||'')||!['image/jpeg','image/png','image/webp'].includes(type))return err(400,'invalid_view_envelope');
+   const share=await env.DB.prepare("SELECT id,expires_at FROM lk_v2_meetup_shares WHERE id=? AND owner_id=? AND meetup_id=? AND scope='view' AND revoked_at IS NULL AND expires_at>?").bind(shareId,owner.id,m.id,now()).first();
+   if(!share)return err(403,'view_link_invalid');
+   const count=await env.DB.prepare("SELECT COUNT(*) n FROM lk_v2_view_packages WHERE share_id=?").bind(shareId).first();
+   if(count.n>=100)return err(429,'view_package_limit');
+   const len=Number(request.headers.get('content-length'));
+   if(!Number.isFinite(len)||len<17||len>16*1024*1024)return err(413,'size_invalid');
+   const exists=await env.DB.prepare('SELECT id,ciphertext_sha256 FROM lk_v2_view_packages WHERE id=?').bind(photoId).first();
+   if(exists)return exists.ciphertext_sha256===checksum.toLowerCase()?send({ok:true,id:photoId,existing:true}):err(409,'photo_id_conflict');
+   const binary=await request.arrayBuffer();
+   if(binary.byteLength!==len)return err(400,'length_mismatch');
+   const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',binary))].map(x=>x.toString(16).padStart(2,'0')).join('');
+   if(hash!==checksum.toLowerCase())return err(400,'checksum_mismatch');
+   const key='v2-view/'+shareId+'/'+photoId+'.bin';
+   await env.PHOTOS.put(key,binary,{httpMetadata:{contentType:'application/octet-stream'}});
+   try{
+    await env.DB.prepare("INSERT INTO lk_v2_view_packages(id,meetup_id,owner_id,object_key,share_id,iv,ciphertext_sha256,media_type,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(photoId,m.id,owner.id,key,shareId,iv,hash,type,share.expires_at,now()).run();
+   }catch(e){await env.PHOTOS.delete(key);throw e}
+   return send({ok:true,id:photoId},201);
+  }
+  if(path==='/api/v2/view/info'&&method==='GET'){
+   const c=await capability(env,url.searchParams.get('token'),'view');
+   if(!c)return err(403,'link_invalid');
+   const meetupRow=await env.DB.prepare('SELECT title FROM lk_meetups WHERE id=? AND owner_id=?').bind(c.meetup_id,c.owner_id).first();
+   if(!meetupRow)return err(404,'meetup_not_found');
+   const rows=await env.DB.prepare("SELECT id,iv,media_type,ciphertext_sha256 FROM lk_v2_view_packages WHERE share_id=? AND expires_at>? AND revoked_at IS NULL ORDER BY created_at LIMIT 100").bind(c.id,now()).all();
+   return send({title:meetupRow.title,items:rows.results,can_download_pdf:c.can_download_pdf===1,expires_at:c.expires_at});
+  }
+  if(path==='/api/v2/view/photo'&&method==='GET'){
+   const c=await capability(env,url.searchParams.get('token'),'view');
+   if(!c)return err(403,'link_invalid');
+   const id=url.searchParams.get('id');if(!UUID.test(id||''))return err(400,'invalid_photo');
+   const row=await env.DB.prepare("SELECT object_key FROM lk_v2_view_packages WHERE id=? AND share_id=? AND revoked_at IS NULL AND expires_at>?").bind(id,c.id,now()).first();
+   if(!row)return err(404,'not_found');
+   const obj=await env.PHOTOS.get(row.object_key);if(!obj)return err(404,'object_missing');
+   return new Response(obj.body,{headers:{'content-type':'application/octet-stream','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'}});
   }
   if(path==='/api/v2/inbox/info'&&method==='GET'){
    const c=await capability(env,url.searchParams.get('token'),'upload');
