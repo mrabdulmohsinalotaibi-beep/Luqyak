@@ -21,7 +21,7 @@ test('main app, notifications and private page include last-in-head theme styles
  for(const route of ["/app","/notifications","/private"]){
   const start=worker.indexOf("if(path==='"+route+"')return new Response(");
   assert.ok(start>=0,'route '+route);
-  const finish=worker.indexOf('},{headers:',start);
+  const finish=worker.indexOf('\",{headers:',start);
   const link=worker.indexOf("<link rel='stylesheet' href='/v2/theme.css'>",start);
   const body=worker.indexOf('</head><body>',start);
   assert.ok(link>start&&link<body&&body<finish,'route theme '+route);
