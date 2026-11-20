@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "luqyak-v2-staging",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "luqyak-v2-staging-20261121",
+      "database_id": "b3a0abc1-b79b-4d70-ad3a-f6b5e6e7c2ed"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "luqyak-v2-staging-photos-20261121"
+    }
+  ],
+  "services": [
+    {
+      "binding": "LIVE_CHANNEL",
+      "service": "luqyak-live",
+      "environment": "production"
+    }
+  ],
+  "vars": {
+    "AUTH_FROM_EMAIL": "Luqyak Staging <no-reply@mail.athat.app>"
+  },
+  "triggers": {
+    "crons": []
+  }
+}
