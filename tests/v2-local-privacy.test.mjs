@@ -11,7 +11,7 @@ test('local inbox only writes ciphertext and verifies durable encrypted bytes be
  assert.match(src,/bytes:new Blob\(\[cipher\]/);
  assert.match(src,/validateDelivery\(envelope\)/);
  assert.match(src,/crypto\.subtle\.digest\('SHA-256',await item\.bytes\.arrayBuffer\(\)\)/);
- assert.ok(src.indexOf('await saveOwnerPhoto(')<src.indexOf("'/ack'") || src.indexOf('await saveOwnerPhoto(')<src.indexOf("+'/ack'"));
+ assert.ok(src.indexOf('await saveOwnerPhoto(')<src.indexOf('const receipt=await fetch('));
  assert.doesNotMatch(src,/new Blob\(\[plain\]\).*objectStore\('photos'\)\.put/s);
 });
 
@@ -20,7 +20,7 @@ test('local photos and private keys are isolated by authenticated user',()=>{
  for(const src of [inbox,vault]){
   assert.match(src,/\/api\/auth\/me/);
   assert.match(src,/body\.authenticated/);
-  assert.match(src,/indexedDB\.open\([^\n]+\+':'+/);
+  assert.match(src,/indexedDB\.open\([^\n]*\+':'/);
  }
 });
 
