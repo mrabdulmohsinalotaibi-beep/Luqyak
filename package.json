@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "check": "bash -o pipefail -c 'node --check worker.js 2>&1 | tail -n 5'",
+    "check": "bash -c 'node --check worker.js 2>/tmp/luqyak-syntax.log || { tail -c 1200 /tmp/luqyak-syntax.log; exit 1; }'",
     "deploy": "wrangler deploy --keep-vars",
     "test": "node --test tests/*.test.mjs",
     "validate": "npm run check && npm test"
