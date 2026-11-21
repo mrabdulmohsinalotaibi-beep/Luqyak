@@ -27,6 +27,8 @@ jobs:
           fs.writeFileSync('/tmp/luqyak-inline-3.js',scripts[2][1]);
           NODE
           node --check /tmp/luqyak-inline-3.js 2>&1 | tail -c 2200
+      - name: Validate theme module syntax
+        run: node --check luqyak-theme-response.js
       - name: Check syntax with concise failure logs
         run: |
           npm run check > /tmp/luqyak-check.log 2>&1 || { tail -c 2500 /tmp/luqyak-check.log; exit 1; }
