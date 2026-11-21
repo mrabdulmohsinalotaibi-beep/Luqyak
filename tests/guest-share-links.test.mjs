@@ -60,3 +60,10 @@ test('guest image flow uses a permitted blob preview, square preflight and expli
  assert.match(source,/body:selectedPhoto/);
  assert.match(source,/if\(!selectedPhoto\)return say/);
 });
+
+test('cancelling a guest image invalidates a pending asynchronous crop',()=>{
+ assert.match(source,/let photoSelectionVersion=0/);
+ assert.match(source,/const version=\+\+photoSelectionVersion/);
+ assert.match(source,/if\(version!==photoSelectionVersion\)return/);
+ assert.match(source,/q\('cancelPhoto'\)\.onclick=\(\)=>\{\s*photoSelectionVersion\+\+/);
+});
