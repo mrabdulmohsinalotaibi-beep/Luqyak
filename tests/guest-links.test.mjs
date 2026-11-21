@@ -24,3 +24,16 @@ test('guest experience distinguishes camera-only from read-only album',()=>{
  assert.match(code,/!v\.allowed&&!v\.canUpload/);
  assert.match(code,/read_only_link/);
 });
+
+test('owner alone can enumerate and manage share links without disclosing raw URL tokens',()=>{
+ assert.match(code,/route==='\/api\/guest\/owner-links'/);
+ assert.match(code,/route==='\/api\/guest\/manage-link'/);
+ assert.match(code,/meet\.owner_id!==actor\.id/);
+ assert.match(code,/l\.owner_id=\?/);
+ assert.match(code,/link_id/);
+ assert.match(code,/token_hash/);
+ assert.match(code,/items:\(rows\.results\|\|\[\]\)\.map/);
+ assert.match(code,/id:x\.token_hash/);
+ assert.match(code,/!\['revoke','extend'\]\.includes\(action\)/);
+ assert.match(code,/if\(link\.ended&&link\.can_upload===1\)/);
+});
