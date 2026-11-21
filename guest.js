@@ -169,7 +169,7 @@ export async function guestOwnerHandler(request,env){
  const canView=b.can_view===true,canUpload=b.can_upload===true;
  if(canView===canUpload)return reply({error:'invalid_purpose',message:'أنشئ رابطًا للتصوير فقط أو للمشاهدة فقط'},400);
  const token=random();
- const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))').bind(id,actor.id).first();
+ const active=await env.DB.prepare("SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))").bind(id,actor.id).first();
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
  const expiresAt=duration?new Date(Date.now()+duration*3600000).toISOString():null;
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos,expires_at) VALUES(?,?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,canView?1:0,canUpload?1:0,canUpload&&b.review_photos===true?1:0,expiresAt).run();
