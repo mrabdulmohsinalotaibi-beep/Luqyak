@@ -160,9 +160,10 @@ export async function guestOwnerHandler(request,env){
  const actor=await viewer(request,env);if(!actor)return reply({error:'login_required'},401);
  const b=await request.json(),id=String(b.meetup_id||'');
  if(!/^[a-f0-9-]{36}$/.test(id))return reply({error:'invalid_meetup'},400);
- const meet=await env.DB.prepare('SELECT owner_id,privacy FROM lk_meetups WHERE id=?').bind(id).first();
+ const meet=await env.DB.prepare('SELECT owner_id,privacy,ended FROM lk_meetups WHERE id=?').bind(id).first();
  if(!meet||meet.owner_id!==actor.id)return reply({error:'not_allowed'},403);
  if(meet.privacy==='private')return reply({error:'private_meetup'},403);
+ if(meet.ended&&b.can_upload!==false)return reply({error:'meetup_ended',message:'اللقاء منتهٍ؛ أنشئ رابط مشاهدة فقط'},409);
  const mode=String(b.mode||'link');
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
  const duration=Number(b.duration_hours||0);
