@@ -73,8 +73,8 @@ test('guest invitation landing page uses a private non-cacheable response',async
  const {env}=mocked();
  const response=await guestHandler(new Request(root+'/g/'+token),env);
  assert.equal(response.status,200);
- assert.match(response.headers.get('cache-control'),'no-store');
- assert.match(response.headers.get('referrer-policy'),'no-referrer');
+ assert.match(response.headers.get('cache-control'),/no-store/);
+ assert.match(response.headers.get('referrer-policy'),/no-referrer/);
  const html=await response.text();
  assert.match(html,/الدخول كضيف/);
  assert.match(html,/حفظ المناسبة في حسابي/);
