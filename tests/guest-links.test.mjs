@@ -6,10 +6,10 @@ const code=readFileSync(new URL('../guest.js',import.meta.url),'utf8');
 test('guest link module parses',()=>{
  assert.doesNotThrow(()=>new Function(code.replaceAll('export async function','async function')));
 });
-test('new guest links cannot combine capture and viewing',()=>{
- assert.match(code,/canView===canUpload/);
+test('new guest links support combined capture and viewing without enabling an empty purpose',()=>{
+ assert.match(code,/if\(!canView&&!canUpload\)/);
  assert.match(code,/canView\?1:0,canUpload\?1:0/);
- assert.match(code,/linkType:canUpload\?'capture':'view'/);
+ assert.match(code,/linkType:canView&&canUpload\?'both':canUpload\?'capture':'view'/);
 });
 test('sharing duration and revocation are enforced by server',()=>{
  assert.match(code,/julianday\(l\.expires_at\)>julianday\('now'\)/);
