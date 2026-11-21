@@ -77,3 +77,18 @@ test('invited participants can join in one tap and share photos while only host 
  assert.match(code,/if\(!csrf\(\)\|\|!access\.owner\)return json\(\{error:'not_allowed'\},403\)/);
  assert.match(code,/m\.created_at,u\.display_name FROM lk_meetup_members/);
 });
+
+test('installed theme uses the same olive and sand colors as the app',async()=>{
+ const [manifestResponse,appResponse]=await Promise.all([
+  worker.fetch(new Request(origin+'/manifest.webmanifest'),{},ctx),
+  worker.fetch(new Request(origin+'/app'),{},ctx)
+ ]);
+ assert.equal(manifestResponse.status,200);
+ assert.equal(appResponse.status,200);
+ const manifest=await manifestResponse.json();
+ const html=await appResponse.text();
+ assert.equal(manifest.theme_color,'#354434');
+ assert.equal(manifest.background_color,'#F5F0E4');
+ assert.match(html,/<meta name="theme-color" content="#354434"/);
+ assert.match(html,/--wine:#354434/);
+});
