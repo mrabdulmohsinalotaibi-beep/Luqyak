@@ -1,0 +1,27 @@
+name: Guest photo sharing checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - guest.js
+      - src/square-photo-editor.js
+      - tests/guest-*.test.mjs
+      - .github/workflows/guest-sharing.yml
+  push:
+    branches: [fix/guest-photo-preflight-20261121]
+jobs:
+  guest-sharing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check guest handler and photo editor syntax
+        run: |
+          node --check guest.js
+          node --check src/square-photo-editor.js
+      - name: Run isolated guest flow and sharing regression tests
+        run: |
+          node --test tests/guest-flow.test.mjs tests/guest-links.test.mjs tests/guest-share-links.test.mjs
