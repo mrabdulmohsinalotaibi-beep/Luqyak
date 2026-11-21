@@ -11,9 +11,11 @@ test('three-step meetup flow and secure default', () => {
   }
 });
 
-test('home excludes elapsed and invited meetups from upcoming', () => {
-  assert.match(source, /const upcoming=meetups\.filter\(m=>!m\.ended&&!m\.isInvited&&new Date\(m\.time\)\.getTime\(\)>=Date\.now\(\)\)/);
-  assert.match(source, /const anniversaries=meetups\.filter\(m=>\(m\.ended\|\|m\.photos\?\.length\)&&sameHijriDay\(m\.time\)\)/);
+test('home excludes ended and invited meetups from upcoming without removing memories', () => {
+  assert.match(source, /const now=Date\.now\(\)/);
+  assert.match(source, /const upcoming=meetups\.filter\(m=>!m\.ended&&!m\.isInvited&&new Date\(m\.time\)\.getTime\(\)>=now\)/);
+  assert.match(source, /const invites=meetups\.filter\(m=>m\.isInvited&&!m\.ended\)/);
+  assert.match(source, /const recent=meetups\.filter\(m=>!m\.isInvited\)/);
 });
 
 test('worker never caches private API or media in offline handler', () => {
