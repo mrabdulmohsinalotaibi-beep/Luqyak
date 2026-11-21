@@ -11,7 +11,7 @@ async function viewer(request,env){
 }
 async function linkFor(env,raw){
  if(!matchToken(raw))return null;
- return env.DB.prepare("SELECT l.*,m.title,m.place,m.starts_at,m.ended FROM lk_guest_links l JOIN lk_meetups m ON m.id=l.meetup_id WHERE l.token_hash=? AND l.revoked_at IS NULL AND m.privacy<>'private'").bind(await digest(raw)).first();
+ return env.DB.prepare("SELECT l.*,m.title,m.place,m.starts_at,m.ended FROM lk_guest_links l JOIN lk_meetups m ON m.id=l.meetup_id WHERE l.token_hash=? AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at>datetime('now')) AND m.privacy<>'private'").bind(await digest(raw)).first();
 }
 async function guestFor(request,env,link){
  const cookieName='__Host-luqyak_guest_'+link.token_hash.slice(0,16);
@@ -89,7 +89,7 @@ export async function guestHandler(request,env){
  const apiPath=path.replace('/api/guest/','');
  if(apiPath==='album'&&method==='GET'){
   const photos=allowed?(await env.DB.prepare("SELECT id FROM lk_meetup_photos WHERE meetup_id=? UNION ALL SELECT id FROM lk_guest_photos WHERE meetup_id=? AND status='approved' LIMIT 180").bind(link.meetup_id,link.meetup_id).all()).results:[];
-  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,canUpload,owner,photos});
+  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,canUpload,owner,photos,expiresAt:link.expires_at||null,access:link.can_upload&&!link.can_view?'capture':link.can_view&&!link.can_upload?'view':'both'});
  }
  if(apiPath==='join'&&method==='POST'){
   if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
@@ -132,7 +132,7 @@ export async function guestHandler(request,env){
   if(guest.status==='accepted')await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,actor.id).run();
   return reply({ok:true});
  }
- if(apiPath==='revoke'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND owner_id=?').bind(link.token_hash,actor.id).run();return reply({ok:true})}
+ if(apiPath==='extend'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){\n  const b=await request.json().catch(()=>({}));const hours=Number(b.hours);\n  if(![1,2,3,24,48,168].includes(hours))return reply({error:'invalid_duration'},400);\n  await env.DB.prepare(\"UPDATE lk_guest_links SET expires_at=datetime(MAX(COALESCE(expires_at,datetime('now')),datetime('now')),'+'||?||' hours') WHERE token_hash=? AND owner_id=?\").bind(hours,link.token_hash,actor.id).run();\n  return reply({ok:true,extendedHours:hours});\n }\n if(apiPath==='revoke'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND owner_id=?').bind(link.token_hash,actor.id).run();return reply({ok:true})}
  if(apiPath==='moderation'&&owner){
   if(method==='GET'){
    const members=(await env.DB.prepare("SELECT id,display_name,status FROM lk_guest_members WHERE token_hash=? ORDER BY created_at DESC LIMIT 200").bind(link.token_hash).all()).results;
@@ -160,11 +160,10 @@ export async function guestOwnerHandler(request,env){
  if(meet.privacy==='private')return reply({error:'private_meetup'},403);
  const mode=String(b.mode||'link');
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
- const token=random();
- const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).first();
+ const duration=Number(b.duration_hours||0);\n if(![0,1,2,3,24,48,168].includes(duration))return reply({error:'invalid_duration'},400);\n if(b.can_view===false&&b.can_upload===false)return reply({error:'no_permissions'},400);\n const token=random();\n const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).first();
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
- await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0).run();
- return reply({ok:true,url:url.origin+'/g/'+token});
+ const expiresAt=duration?new Date(Date.now()+duration*3600000).toISOString():null;\n await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos,expires_at) VALUES(?,?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0,expiresAt).run();
+ return reply({ok:true,url:url.origin+'/g/'+token,expiresAt,linkType:b.can_view===false?'capture':b.can_upload===false?'view':'both'});
 }
 
 
