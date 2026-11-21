@@ -32,8 +32,8 @@ test('social app provides a private friends circle without chat controls',async(
  const response=await worker.fetch(new Request('https://luqyak.athat.app/app'),{},{waitUntil(){}});
  assert.equal(response.status,200);
  const html=await response.text();
- assert.match(html,/دائرة أصدقائي/);
- assert.match(html,/دائرتي<\/button>/);
+ assert.match(html,/دائرة علاقاتي/);
+ assert.match(html,/الأصدقاء وطلبات الإضافة<\/button>/);
  assert.match(html,/lkAddFriendForm/);
- assert.doesNotMatch(html,/فتح المحادثات المشفّرة<\/a>/);
+ assert.doesNotMatch(html,/data-tab="chats"/);
 });
