@@ -162,6 +162,16 @@ export async function guestOwnerHandler(request,env){
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
  const token=random();
  const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).first();
+ if(b.link_set==='split'){
+  if(active.n>10)return reply({error:'link_limit',message:'يلزم توفر رابطين جديدين. ألغِ روابط قديمة أولًا.'},429);
+  const captureToken=token,viewToken=random();
+  const insert="INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)";
+  const capture=env.DB.prepare(insert).bind(await digest(captureToken),id,actor.id,mode,0,1,b.review_photos===true?1:0);
+  const view=env.DB.prepare(insert).bind(await digest(viewToken),id,actor.id,mode,1,0,0);
+  // D1 batch is transactional: neither link survives if the other insert fails.
+  await env.DB.batch([capture,view]);
+  return reply({ok:true,url:url.origin+'/g/'+captureToken,capture_url:url.origin+'/g/'+captureToken,view_url:url.origin+'/g/'+viewToken},201);
+ }
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0).run();
  return reply({ok:true,url:url.origin+'/g/'+token});
