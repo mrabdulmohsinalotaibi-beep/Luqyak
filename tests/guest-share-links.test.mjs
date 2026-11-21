@@ -51,3 +51,12 @@ test('sharing UI separates purposes, duration and WhatsApp delivery',()=>{
  assert.match(app,/wa\.me\/\?text=/);
  assert.match(source,/savePdf/);
 });
+
+test('guest image flow uses a permitted blob preview, square preflight and explicit send or cancel',()=>{
+ assert.match(source,/img-src 'self' data: blob:/);
+ assert.match(source,/id="cancelPhoto"/);
+ assert.match(source,/q\('cancelPhoto'\)\.onclick=/);
+ assert.match(source,/const cropped=await openSquarePhotoEditor\(f\)/);
+ assert.match(source,/body:selectedPhoto/);
+ assert.match(source,/if\(!selectedPhoto\)return say/);
+});
