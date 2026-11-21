@@ -33,7 +33,8 @@ test('social app provides a private friends circle without chat controls',async(
  assert.equal(response.status,200);
  const html=await response.text();
  assert.match(html,/دائرة علاقاتي/);
- assert.match(html,/الأصدقاء وطلبات الإضافة<\/button>/);
+ assert.match(html,/الأصدقاء وطلبات الإضافة/);
+ assert.match(html,/قائمة علاقاتك وطلباتك لا تظهر إلا لك/);
  assert.match(html,/lkAddFriendForm/);
  assert.doesNotMatch(html,/data-tab="chats"/);
 });
