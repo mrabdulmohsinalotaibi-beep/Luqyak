@@ -862,7 +862,7 @@ if(path==='/api/social/delete-photo'&&method==='POST'){
    if(localUpload&&!legacyKey){const sig=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('luqyak/upload/v1:'+u.id+':'+id+':'+localUpload)))).slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('');photoId=sig.slice(0,8)+'-'+sig.slice(8,12)+'-'+sig.slice(12,16)+'-'+sig.slice(16,20)+'-'+sig.slice(20,32);const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(known)return json({ok:true,id:photoId,existing:true})}
    if(legacyKey){const sig=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('luqyak/photo/v1:'+u.id+':'+id+':'+legacyKey)))).slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('');photoId=sig.slice(0,8)+'-'+sig.slice(8,12)+'-'+sig.slice(12,16)+'-'+sig.slice(16,20)+'-'+sig.slice(20,32);const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();if(known)return json({ok:true,id:photoId,existing:true})}
    const key='meetup-albums/'+id+'/'+photoId+'.jpg';
-   const stored=await env.PHOTOS.put(key,ab,{httpMetadata:{contentType:'image/jpeg'},onlyIf:{etagDoesNotMatch:'*'}});
+   const stored=await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType:'image/jpeg'},onlyIf:{etagDoesNotMatch:'*'}});
    if(!stored){
      const known=await env.DB.prepare('SELECT id FROM lk_meetup_photos WHERE id=? AND meetup_id=?').bind(photoId,id).first();
      if(known)return json({ok:true,id:photoId,existing:true});
