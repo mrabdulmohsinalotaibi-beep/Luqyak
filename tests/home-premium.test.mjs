@@ -26,5 +26,8 @@ test('real authorized photos, navigation and viewer are retained',()=>{
  assert.match(html,/data-feed-view/);
  assert.match(html,/data-action="meetQuick"/);
  assert.match(html,/data-action="memories"/);
- assert.match(html,/data-action="chats"/);
+ assert.match(html,/data-tab="home"/);
+ assert.match(html,/data-tab="meet"/);
+ assert.match(html,/data-tab="memories"/);
+ assert.doesNotMatch(html,/data-tab="chats"/);
 });
