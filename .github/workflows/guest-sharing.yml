@@ -1,0 +1,39 @@
+name: Guest photo sharing checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - guest.js
+      - worker.js
+      - src/my-memories.js
+      - src/bounded-jpeg.js
+      - tests/bounded-jpeg.test.mjs
+      - tests/quality-gates.test.mjs
+      - tests/device-contracts.test.mjs
+      - src/square-photo-editor.js
+      - tests/guest-*.test.mjs
+      - .github/workflows/guest-sharing.yml
+  push:
+    branches: [fix/guest-photo-preflight-20261121]
+jobs:
+  guest-sharing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check guest handler and photo editor syntax
+        run: |
+          node --check guest.js
+          node --check src/bounded-jpeg.js
+          node --check src/square-photo-editor.js
+      - name: Run isolated guest flow and sharing regression tests
+        run: |
+          node --test tests/guest-flow.test.mjs tests/guest-links.test.mjs tests/guest-share-links.test.mjs tests/bounded-jpeg.test.mjs
+      - name: Check installed PWA theme matches site
+        run: node --test --test-name-pattern='installed theme uses the same olive and sand colors as the app' tests/device-contracts.test.mjs
+      - name: Verify photo memories paging and Worker module sync
+        run: node --test --test-name-pattern='Memories shows six personal photos per page|served Memories module always matches the source file|repeat photo upload never overwrites R2' tests/quality-gates.test.mjs
+

@@ -31,22 +31,22 @@ async function request(path,env,{post=false,originHeader=origin}={}){
   return worker.fetch(new Request(origin+path,{method:post?'POST':'GET',headers,
     ...(post?{body:JSON.stringify({text:'test message',client_id:crypto.randomUUID()})}:{})}),env,{waitUntil(){}});
 }
-test('inactive or removed friends cannot read, send or mark chats read',async()=>{
+test('retired chat routes reject read and write before touching private data',async()=>{
   for(const state of [{active:false},{accepted:false},{blocked:true}]){
     for(const path of ['/api/chat/messages?peer='+peer,'/api/chat/send?peer='+peer,'/api/chat/read?peer='+peer]){
       const {env,queries}=fixture(state);
       const response=await request(path,env,{post:!path.includes('/messages')});
-      assert.equal(response.status,403,JSON.stringify({state,path}));
-      assert.equal((await response.json()).error,'not_friends');
+      assert.equal(response.status,410,JSON.stringify({state,path}));
+      assert.equal((await response.json()).error,'feature_removed');
       assert.match(response.headers.get('cache-control')||'',/no-store/);
-      assert.ok(queries.some(q=>q.includes('FROM auth_sessions')));
-      assert.ok(!queries.some(q=>q.includes('SELECT id,sender_id,recipient_id,body,created_at,read_at FROM lk_account_messages')));
+      assert.deepEqual(queries,[],'Disabled chat must not query private records');
     }
   }
 });
-test('cross-origin account-chat writes fail before any message read/write',async()=>{
-  const {env}=fixture();
+test('disabled chat writes reject cross-origin requests without DB access',async()=>{
+  const {env,queries}=fixture();
   const response=await request('/api/chat/send?peer='+peer,env,{post:true,originHeader:'https://attacker.example'});
-  assert.equal(response.status,403);
-  assert.equal((await response.json()).error,'invalid_origin');
+  assert.equal(response.status,410);
+  assert.equal((await response.json()).error,'feature_removed');
+  assert.deepEqual(queries,[]);
 });

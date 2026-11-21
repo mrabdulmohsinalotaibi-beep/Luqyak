@@ -8,13 +8,17 @@ const B=String.fromCharCode(92,34);
 const appStart=worker.indexOf("if(path==='/app')return new Response(");
 const app=worker.slice(appStart,worker.indexOf("if(path==='/notifications')return new Response(",appStart));
 const between=(a,b)=>{const i=app.indexOf(a),j=app.indexOf(b,i+a.length);assert.ok(i>=0&&j>=0,'Missing markers: '+a+' '+b);return app.slice(i,j)};
-test('home contains exactly three meaningful actions, working invite and accessible feed',()=>{
+test('home retains photo feed, invites and direct meeting actions without chat shortcuts',()=>{
  const home=between('function home(){','async function lkHomeEnsureDetails');
- const actions=[...home.matchAll(/data-action=\\"(meetQuick|meet|memories|chats)\\" class=\\"lk-home-shortcut/g)].map(x=>x[1]);
- assert.deepEqual(actions,['meetQuick','meet','memories']);
- assert.match(home,/lk-live-invitehint/);
- assert.match(home,/lk-home-story-track/);
- assert.match(home,/data-feed-open/);
+ const attribute=(name,value)=>name+'='+B+value+B;
+ assert.ok(home.includes(attribute('data-home-filter','latest')),'All shared photos action missing');
+ assert.ok(home.includes('lk-home-story-track'),'Friend moments photo strip missing');
+ assert.ok(home.includes('lk-home-photos-empty'),'Empty moments fallback missing');
+ assert.ok(home.includes('lk-live-invitehint'),'Pending invitation action missing');
+ assert.ok(home.includes('data-feed-open'),'Meeting details action missing');
+ assert.ok(home.includes(attribute('data-action','meet')),'Meeting list action missing');
+ assert.ok(home.includes(attribute('data-action','meetQuick')),'Create meeting action missing');
+ assert.ok(!home.includes(attribute('data-action','chats')),'Retired chat action must not return');
  for(const redundant of ['lk-night-memory','lk-home-next','lk-home-recent-track','lk-atelier-vault'])
   assert.ok(!home.includes(redundant),'Redundant home element: '+redundant);
 });

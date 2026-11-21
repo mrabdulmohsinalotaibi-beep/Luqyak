@@ -60,12 +60,13 @@ test('any attempt to enumerate another user by query parameter is denied before 
   assert.equal(calls.some(x=>x.sql.includes('FROM luqyak_friend_requests f JOIN users u')),false);
  }
 });
-test('legacy chat contact list also denies selecting another user via query params',async()=>{
+test('retired chat listing cannot enumerate private relationships',async()=>{
  calls=[];
  const res=await get('/api/chat/list?user_id='+bob,alice,cookieA);
- assert.equal(res.status,403);
- assert.equal((await res.json()).error,'relationship_list_private');
- assert.equal(calls.some(x=>x.sql.includes('luqyak_friend_requests')),false);
+ assert.equal(res.status,410);
+ assert.equal((await res.json()).error,'feature_removed');
+ assert.equal(calls.length,0,'Retired chat listing must not query the database');
+ assert.match(res.headers.get('cache-control')||'',/no-store/);
 });
 test('relationship API is unavailable without login',async()=>{
  const res=await worker.fetch(new Request(origin+'/api/private/friends'),{},{waitUntil(){}});
@@ -75,7 +76,7 @@ test('private relationships are available without exposing the removed chat scre
  const app=await worker.fetch(new Request(origin+'/app'),{},{waitUntil(){}});
  const privatePage=await worker.fetch(new Request(origin+'/private'),{},{waitUntil(){}});
  const html=await app.text();
- assert.match(html,/دائرة أصدقائي/);
- assert.match(html,/أصدقاؤك يظهرون لك وحدك/);
+ assert.match(html,/دائرة علاقاتي/);
+ assert.match(html,/قائمة علاقاتك وطلباتك لا تظهر إلا لك/);
  assert.equal(privatePage.status,302);
 });

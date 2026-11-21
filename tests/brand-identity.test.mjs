@@ -11,15 +11,15 @@ test('Saudi Najdi identity and accessible app assets are wired', () => {
   assert.match(source, /\/brand\/luqyak-2026-logo\.svg/);
   assert.match(source, /\/brand\/luqyak-2026-icon\.svg/);
   assert.match(source, /\/brand\/luqyak-2026-icon\.png/);
-  assert.match(source, /#006C35/);
-  assert.match(source, /#A56A43/);
-  assert.match(source, /#D8B892/);
+  assert.match(source, /--wine:#354434/);
+  assert.match(source, /--cream:#F5F0E4/);
+  assert.match(source, /#BE9F57/);
 });
 
 test('PWA icon and bindings remain available', () => {
   assert.match(source, /apple-touch-icon/);
   assert.match(source, /application\/manifest\+json/);
-  for (const binding of ['"name": "DB"', '"name": "PHOTOS"', '"name": "LIVE_CHANNEL"']) {
-    assert.ok(config.includes(binding), 'missing binding '+binding);
+  for (const binding of ['DB', 'PHOTOS', 'LIVE_CHANNEL']) {
+    assert.match(config, new RegExp('"binding"\\s*:\\s*"'+binding+'"'), 'missing binding '+binding);
   }
 });

@@ -9,21 +9,26 @@ test('new identity preserves original logo asset', () => {
   assert.match(worker, /Logo matched identity 2026-11-14/);
 });
 
-test('logo palette is applied to the live app', () => {
-  for (const color of ['#2F5D4B', '#9A3D27', '#7A4E3A', '#EADFCF', '#F8F5F1']) {
-    assert.ok(worker.includes(color), 'missing logo color '+color);
-  }
+const appMarker="if(path==='/app')return new Response(";
+const appStart=worker.indexOf(appMarker)+appMarker.length;
+const appEnd=worker.indexOf(",{headers:",appStart);
+assert.ok(appStart>=appMarker.length&&appEnd>appStart);
+const html=JSON.parse(worker.slice(appStart,appEnd));
+
+test('active olive and sand palette is applied to the served app', () => {
+  assert.match(html,/<meta name="theme-color" content="#354434">/);
+  assert.match(html,/--wine:#354434/);
+  assert.match(html,/--cream:#F5F0E4/);
+  assert.match(html,/#BE9F57/);
 });
 
-test('all four new navigation shortcuts have supported actions', () => {
-  const start = worker.indexOf('<nav class=\\\"lk-identity-shortcuts');
-  const end = worker.indexOf('</nav>', start);
-  assert.ok(start > 0 && end > start, 'missing shortcuts');
-  const nav = worker.slice(start,end);
-  for(const action of ['meetQuick','memories','chats']) {
-    assert.ok(nav.includes('data-action=\\\"'+action+'\\\"'), 'missing action '+action);
-  }
-  assert.match(worker, /else if\(\['home','chats','meet','memories','account','settings'\]\.includes\(x\)\)choose\(x\)/);
+test('main navigation keeps three tabs and an accessible create-meeting action', () => {
+  const nav=html.match(/<nav class="bottom lk-bottom-premium lk-core-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+  assert.ok(nav,'missing compact navigation');
+  assert.deepEqual([...nav.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['home','meet','memories']);
+  assert.match(nav,/data-action="meetQuick"/);
+  assert.match(nav,/aria-label="إنشاء لقاء"/);
+  assert.doesNotMatch(nav,/data-(?:tab|action)="chats"/);
 });
 
 test('responsive and accessible interactions remain enabled', () => {

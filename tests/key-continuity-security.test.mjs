@@ -10,7 +10,7 @@ const account='00000000-0000-4000-8000-000000000099';
 const cookie='__Host-luqyak_session='+('a'.repeat(64));
 const digest=async str=>Array.from(new Uint8Array(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(str)))).map(n=>n.toString(16).padStart(2,'0')).join('');
 const canonical=j=>JSON.stringify({crv:j.crv,kty:j.kty,x:j.x,y:j.y});
-test('login on a second device cannot silently replace existing E2EE identity',async()=>{
+test('retired key registration cannot replace E2EE identity or access stored key',async()=>{
   const oldPair=await webcrypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
   const newPair=await webcrypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
   const oldKey=await webcrypto.subtle.exportKey('jwk',oldPair.publicKey);
@@ -33,12 +33,13 @@ test('login on a second device cannot silently replace existing E2EE identity',a
     method:'POST',headers:{cookie,origin,'content-type':'application/json'},
     body:JSON.stringify({public_jwk:newKey,fingerprint:newFp})
   }),env,{waitUntil(){}});
-  assert.equal(response.status,409);
-  assert.equal((await response.json()).error,'key_already_registered');
+  assert.equal(response.status,410);
+  assert.equal((await response.json()).error,'feature_removed');
   assert.equal(writes,0);
-  assert.ok(reads>=2);
+  assert.equal(reads,0);
 });
 test('plaintext chat endpoint cannot accept a new message after E2EE migration',async()=>{
   const response=await worker.fetch(new Request(origin+'/api/chat/send',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({text:'should not store'})}),{}, {waitUntil(){}});
-  assert.equal(response.status,401);
+  assert.equal(response.status,410);
+  assert.equal((await response.json()).error,'feature_removed');
 });
