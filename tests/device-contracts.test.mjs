@@ -6,7 +6,7 @@ import worker from '../worker.js';
 const origin='https://luqyak.athat.app';
 const ctx={waitUntil(){}};
 
-test('installed mobile app has safe-area and standalone metadata',async()=>{
+test('installed mobile app has safe-area, active branding and resolvable PNG icon',async()=>{
   const [page,manifest]=await Promise.all([
     worker.fetch(new Request(origin+'/app'),{},ctx),
     worker.fetch(new Request(origin+'/manifest.webmanifest'),{},ctx)
@@ -15,17 +15,27 @@ test('installed mobile app has safe-area and standalone metadata',async()=>{
   const html=await page.text();
   assert.match(html,/viewport-fit=cover/);
   assert.match(html,/apple-mobile-web-app-capable/);
-  assert.match(html,/src="\/brand\/luqyak-logo-transparent\.svg\?v=20261114c"/);
+  assert.match(html,/src="\/brand\/luqyak-2026-logo\.svg\?v=20261115olivegold3"/);
   const appManifest=await manifest.json();
   assert.equal(appManifest.display,'standalone');
-  assert.match(html,/rel="apple-touch-icon"[^>]+luqyak-home-white-20261114\.png/);
-  const icon=await worker.fetch(new Request(origin+'/brand/luqyak-home-white-20261114.png'),{},ctx);
-  assert.equal(icon.headers.get('content-type'),'image/png');
-  const iconBytes=new Uint8Array(await icon.arrayBuffer());
-  assert.equal(iconBytes[25],3); // indexed PNG
-  const imageChunks=new TextDecoder('latin1').decode(iconBytes);
-  assert.equal(imageChunks.includes('tRNS'),false); // opaque icon; iOS will not fill transparency with black
-  assert.ok(appManifest.icons.some(icon=>icon.src.includes('luqyak-home-white-20261114.png') && icon.type==='image/png' && icon.sizes==='180x180'));
+  assert.equal(appManifest.theme_color,'#354434');
+  assert.equal(appManifest.background_color,'#F5F0E4');
+  assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='192x192'));
+  assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='512x512'));
+  const touchIcon=html.match(/rel="apple-touch-icon"[^>]+href="([^"]+)"/)?.[1];
+  assert.ok(touchIcon?.startsWith('/brand/luqyak-2026-icon.png?v='),'Current Apple icon missing');
+  const iconRoute=await worker.fetch(new Request(new URL(touchIcon,origin)),{},ctx);
+  assert.equal(iconRoute.status,302,'Apple icon alias must redirect to hosted PNG');
+  const location=iconRoute.headers.get('location');
+  assert.ok(location?.startsWith(origin+'/brand/luqyak-icon-512.png'));
+  const icon=await worker.fetch(new Request(location),{},ctx);
+  assert.equal(icon.status,200);
+  assert.match(icon.headers.get('content-type')||'',/image\/png/);
+  const bytes=new Uint8Array(await icon.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0,8)],[137,80,78,71,13,10,26,10]);
+  const dimensions=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  assert.equal(dimensions.getUint32(16),512);
+  assert.equal(dimensions.getUint32(20),512);
 });
 
 test('meetup creation is a three-step wizard and accepts privacy choice',async()=>{
