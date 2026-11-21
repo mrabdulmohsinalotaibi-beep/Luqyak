@@ -13,19 +13,21 @@ test('private meetup photos require a session', async()=>{
   assert.match(response.headers.get('cache-control')||'',/no-store/i);
 });
 
-test('private relay requires a session', async()=>{
+test('retired private relay does not expose a working API to signed-out clients',async()=>{
   const response=await worker.fetch(request('/api/private/status'),{},ctx);
-  assert.equal(response.status,401);
+  assert.equal(response.status,410);
+  assert.equal((await response.json()).error,'feature_removed');
   assert.match(response.headers.get('cache-control')||'',/no-store/i);
 });
 
-test('account chat messages and send endpoint require a session',async()=>{
+test('retired chat endpoints reject both reads and writes',async()=>{
   for(const [path,options] of [
     ['/api/chat/messages?peer=00000000-0000-4000-8000-000000000001',{}],
     ['/api/chat/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:'test'})}]
   ]){
     const response=await worker.fetch(request(path,options),{},ctx);
-    assert.equal(response.status,401,path);
+    assert.equal(response.status,410,path);
+    assert.equal((await response.json()).error,'feature_removed');
     assert.match(response.headers.get('cache-control')||'',/no-store/i);
   }
 });
