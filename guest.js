@@ -152,14 +152,41 @@ export async function guestHandler(request,env){
  }catch(e){console.error('guest album error',String(e));return reply({error:'guest_album_unavailable'},503)}
 }
 export async function guestOwnerHandler(request,env){
- const url=new URL(request.url);
- if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
+ const url=new URL(request.url),method=request.method;
+ if(method!=='GET'&&method!=='POST')return reply({error:'method_not_allowed'},405);
+ if(method==='POST'&&request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
  const actor=await viewer(request,env);if(!actor)return reply({error:'login_required'},401);
- const b=await request.json(),id=String(b.meetup_id||'');
+ const b=method==='GET'?{}:await request.json(),id=String(method==='GET'?url.searchParams.get('meetup_id')||'':b.meetup_id||'');
  if(!/^[a-f0-9-]{36}$/.test(id))return reply({error:'invalid_meetup'},400);
  const meet=await env.DB.prepare('SELECT owner_id,privacy FROM lk_meetups WHERE id=?').bind(id).first();
  if(!meet||meet.owner_id!==actor.id)return reply({error:'not_allowed'},403);
  if(meet.privacy==='private')return reply({error:'private_meetup'},403);
+ if(method==='GET'){
+  const rows=(await env.DB.prepare('SELECT token_hash,mode,can_view,can_upload,review_photos,capture_expires_at,created_at FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 100').bind(id,actor.id).all()).results;
+  return reply({links:rows.map(row=>({id:row.token_hash,mode:row.mode,can_view:row.can_view===1,can_upload:row.can_upload===1,review_photos:row.review_photos===1,capture_expires_at:row.capture_expires_at||null,created_at:row.created_at}))});
+ }
+ if(b.action==='manage_link'){
+  const linkHash=String(b.link_hash||'');
+  const operation=String(b.operation||'');
+  if(!matchToken(linkHash)||!['extend','stop','revoke'].includes(operation))return reply({error:'invalid_management_action'},400);
+  const existing=await env.DB.prepare('SELECT can_upload,revoked_at FROM lk_guest_links WHERE token_hash=? AND meetup_id=? AND owner_id=?').bind(linkHash,id,actor.id).first();
+  if(!existing||existing.revoked_at)return reply({error:'not_allowed'},403);
+  if(operation==='extend'){
+   const hours=Number(b.hours);
+   if(existing.can_upload!==1||!captureWindowHours.has(hours))return reply({error:'invalid_extension'},400);
+   const expiry=new Date(Date.now()+hours*3600000).toISOString();
+   await env.DB.prepare('UPDATE lk_guest_links SET capture_expires_at=? WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL AND can_upload=1').bind(expiry,linkHash,id,actor.id).run();
+   return reply({ok:true,capture_expires_at:expiry});
+  }
+  if(operation==='stop'){
+   if(existing.can_upload!==1)return reply({error:'not_allowed'},403);
+   const expiry=new Date(Date.now()-1000).toISOString();
+   await env.DB.prepare('UPDATE lk_guest_links SET capture_expires_at=? WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL AND can_upload=1').bind(expiry,linkHash,id,actor.id).run();
+   return reply({ok:true,capture_expires_at:expiry});
+  }
+  await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(linkHash,id,actor.id).run();
+  return reply({ok:true,revoked:true});
+ }
  if(b.action==='extend_capture'){
   const raw=String(b.capture_token||'');
   const hours=Number(b.hours);
