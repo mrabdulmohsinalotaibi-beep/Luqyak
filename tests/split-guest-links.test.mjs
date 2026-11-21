@@ -8,20 +8,21 @@ const origin='https://luqyak.athat.app';
 const meetup='00000000-0000-4000-8000-000000000002';
 const owner='00000000-0000-4000-8000-000000000003';
 function setup(active=0){
- const created=[];let batches=0;
+ const created=[];let batches=0;let extensions=0;
  const env={DB:{
   prepare(sql){return {bind(...values){return {
    async first(){
     if(sql.includes('FROM auth_sessions'))return {id:owner};
     if(sql.includes('FROM lk_meetups'))return {owner_id:owner,privacy:'friends'};
     if(sql.includes('COUNT(*) n FROM lk_guest_links'))return {n:active};
+    if(sql.includes('SELECT can_upload,revoked_at FROM lk_guest_links'))return {can_upload:1,revoked_at:null};
     throw new Error('Unexpected query: '+sql);
    },
-   async run(){if(sql.includes('INSERT INTO lk_guest_links'))created.push(values);return {meta:{changes:1}}}
+   async run(){if(sql.includes('INSERT INTO lk_guest_links'))created.push(values);if(sql.includes('UPDATE lk_guest_links SET capture_expires_at'))extensions++;return {meta:{changes:1}}}
   }}}},
   async batch(statements){batches++;for(const s of statements)await s.run();return [{success:true},{success:true}];}
  }};
- return {env,created,get batches(){return batches}};
+ return {env,created,get batches(){return batches},get extensions(){return extensions}};
 }
 function request(body){
  return new Request(origin+'/api/guest/owner',{method:'POST',headers:{origin,'content-type':'application/json',cookie:'__Host-luqyak_session='+'f'.repeat(64)},body:JSON.stringify({meetup_id:meetup,...body})});
@@ -70,4 +71,37 @@ test('owner UI requests independent link capabilities and shows two separate act
  assert.match(ui,/نسخ /);
  assert.match(ui,/مشاركة /);
  assert.doesNotMatch(ui,/lkShareView|lkShareUpload/);
+});
+
+test('capture expires independently of view access',async()=>{
+ const fixture=setup();
+ const response=await guestOwnerHandler(request({link_set:'split',hours:1}),fixture.env);
+ assert.equal(response.status,201);
+ const data=await response.json();
+ const capture=fixture.created[0],view=fixture.created[1];
+ assert.ok(Date.parse(capture[7])>Date.now());
+ assert.ok(Date.parse(capture[7])<=Date.now()+3600100);
+ assert.equal(view[7],null);
+ assert.equal(data.capture_expires_at,capture[7]);
+});
+test('invalid durations cannot create guest links',async()=>{
+ const fixture=setup();
+ const response=await guestOwnerHandler(request({link_set:'split',hours:999}),fixture.env);
+ assert.equal(response.status,400);
+ assert.equal(fixture.batches,0);
+});
+test('owner may extend capture expiry, never the view link',async()=>{
+ const fixture=setup();
+ const token='a'.repeat(64);
+ const response=await guestOwnerHandler(request({action:'extend_capture',capture_token:token,hours:3}),fixture.env);
+ assert.equal(response.status,200);
+ const data=await response.json();
+ assert.ok(Date.parse(data.capture_expires_at)>Date.now()+2*3600000);
+ assert.equal(fixture.extensions,1);
+});
+test('invalid extension duration is rejected without writes',async()=>{
+ const fixture=setup();
+ const response=await guestOwnerHandler(request({action:'extend_capture',capture_token:'b'.repeat(64),hours:0}),fixture.env);
+ assert.equal(response.status,400);
+ assert.equal(fixture.extensions,0);
 });
