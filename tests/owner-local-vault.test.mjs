@@ -29,3 +29,16 @@ test('owner photo storage is an explicit opt-in control, not an automatic backgr
  assert.match(ui,/قد تُفقد/);
  assert.match(worker,/ownerLocalVaultResponse\(\)/);
 });
+
+test('owner can list and preview encrypted photos without re-fetching server media',async()=>{
+ const source=await ownerLocalVaultResponse().text();
+ assert.match(source,/export async function listLocalPhotos/);
+ assert.match(source,/export async function getLocalPhoto/);
+ assert.match(source,/crypto\.subtle\.decrypt/);
+ const worker=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+ const ui=worker.slice(worker.indexOf('async function share(){'),worker.indexOf('function album(){',worker.indexOf('async function share(){')));
+ assert.match(ui,/browseLocal\.onclick/);
+ assert.match(ui,/listLocalPhotos\(m\.id\)/);
+ assert.match(ui,/getLocalPhoto\(m\.id,entry\.photoId\)/);
+ assert.match(ui,/URL\.revokeObjectURL/);
+});
