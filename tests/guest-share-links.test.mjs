@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { guestHandler } from '../guest.js';
+import { guestHandler, guestOwnerHandler } from '../guest.js';
 import { readFileSync } from 'node:fs';
 
 const source=readFileSync(new URL('../guest.js',import.meta.url),'utf8');
@@ -39,6 +39,16 @@ test('viewer link permits photo viewing but not uploads',async()=>{
  assert.equal(data.allowed,true);
  assert.equal(data.photos.length,1);
 });
+test('one combined guest link permits uploading and viewing approved photos',async()=>{
+ const env=fakeEnv(1,1);
+ const r=await guestHandler(new Request('https://luqyak.athat.app/api/guest/album?token='+token,{headers:{cookie}}),env);
+ assert.equal(r.status,200);
+ const data=await r.json();
+ assert.equal(data.access,'both');
+ assert.equal(data.canUpload,true);
+ assert.equal(data.allowed,true);
+ assert.equal(data.photos.length,1);
+});
 test('revoked guest membership cannot enumerate or download album photos',async()=>{
  const env=fakeEnv(1,0,'revoked');
  const album=await guestHandler(new Request('https://luqyak.athat.app/api/guest/album?token='+token,{headers:{cookie}}),env);
@@ -58,13 +68,16 @@ test('guest links cannot silently grant full meetup membership',()=>{
  assert.match(source,/read_only_link/);
  assert.match(source,/apiPath==='extend'/);
 });
-test('sharing UI separates purposes, duration and WhatsApp delivery',()=>{
- assert.match(app,/lkSharePurpose/);
+test('sharing dialog creates one combined photo link and keeps duration, approval and WhatsApp',()=>{
+ assert.doesNotMatch(app,/lkSharePurpose/);
+ assert.match(app,/const capture=!m\\.ended/);
+ assert.match(app,/can_view:true,can_upload:capture/);
  assert.match(app,/lkShareDuration/);
- assert.match(app,/wa\.me\/\?text=/);
+ assert.match(app,/lkShareReview/);
+ assert.match(app,/رابط إضافة ومشاهدة الصور/);
+ assert.match(app,/wa\\.me\\/\\?text=/);
  assert.match(source,/savePdf/);
 });
-
 test('guest image flow uses a permitted blob preview, square preflight and explicit send or cancel',()=>{
  assert.match(source,/img-src 'self' data: blob:/);
  assert.match(source,/id="cancelPhoto"/);
