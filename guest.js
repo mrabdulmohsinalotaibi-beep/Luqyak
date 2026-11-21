@@ -70,7 +70,7 @@ function page(token){
  q('extend').onclick=async()=>{try{await call('extend',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hours:Number(q('extendHours').value)})});say('تم تمديد الرابط');await load()}catch(e){say(e.message)}};\n q('revoke').onclick=async()=>{if(!confirm('إلغاء هذا الرابط سيمنع الضيوف من الدخول إليه. هل تريد المتابعة؟'))return;try{await call('revoke',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم إلغاء الرابط');q('ownerPanel').hidden=true}catch(e){say(e.message)}};
  q('join').onclick=async()=>{const name=q('guestName').value.trim();if(name.length<2)return say('أدخل اسمك أولًا');try{await call('join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});await load()}catch(e){say(e.message)}};
  q('capture').onclick=()=>{q('file').setAttribute('capture','environment');q('file').click()};\n q('upload').onclick=async()=>{const f=q('file').files[0];if(!f)return say('اختر صورة');q('upload').disabled=true;try{const {openSquarePhotoEditor}=await import('/src/square-photo-editor.js');const img=await openSquarePhotoEditor(f);if(!img){say('لم تُحفظ الصورة');return}await call('upload',{method:'POST',headers:{'content-type':'image/jpeg'},body:img});q('file').value='';await load()}catch(e){say(e.message)}finally{q('upload').disabled=false}};
- q('claim').onclick=async()=>{try{await call('claim',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم ربط المناسبة بحسابك. يمكنك الرجوع إلى ذكرياتك.')}catch(e){say('سجّل الدخول أولًا في هذا المتصفح، ثم اضغط حفظ المناسبة في حسابي.')}};
+ q('claim').onclick=async()=>{try{await call('claim',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});say('تم ربط مشاركتك في الرابط بحسابك.')}catch(e){say('سجّل الدخول أولًا في هذا المتصفح، ثم اضغط حفظ المناسبة في حسابي.')}};
  load();
  </script></body></html>`;
 }
@@ -103,7 +103,7 @@ export async function guestHandler(request,env){
   await env.DB.prepare("INSERT INTO lk_guest_members(id,token_hash,display_name,session_hash,status,claimed_user_id) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),link.token_hash,name,await digest(session),status,actor?.id||null).run();
   return reply({ok:true,status},201,{'set-cookie':'__Host-luqyak_guest_'+link.token_hash.slice(0,16)+'='+session+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'});
  }
- if(apiPath==='interact'&&allowed){const pid=url.searchParams.get('photo');const row=await env.DB.prepare("SELECT id FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved'").bind(pid,link.meetup_id).first();if(!row)return reply({error:'not_found'},404);return guestPhotoInteraction(request,env,pid,owner?'user':'guest',owner?actor.id:guest.id)}
+ if(apiPath==='interact'&&allowed){if(method==='POST'&&link.can_upload!==1&&!owner)return reply({error:'read_only_link'},403);const pid=url.searchParams.get('photo');const row=await env.DB.prepare("SELECT id FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved'").bind(pid,link.meetup_id).first();if(!row)return reply({error:'not_found'},404);return guestPhotoInteraction(request,env,pid,owner?'user':'guest',owner?actor.id:guest.id)}
  if(apiPath==='photo'&&method==='GET'){
   if(!allowed)return reply({error:'not_found'},404);
   const id=url.searchParams.get('photo');if(!/^[a-f0-9-]{36}$/.test(id||''))return reply({error:'not_found'},404);
