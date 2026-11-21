@@ -103,7 +103,9 @@ function page(token){
  q('savePdf').onclick=async()=>{if(q('gallery').hidden)return;await Promise.all([...q('gallery').querySelectorAll('img')].map(img=>img.decode?.().catch(()=>{})||Promise.resolve()));window.print()};
  q('capture').onclick=()=>{q('file').setAttribute('capture','environment');q('file').click()};
  q('choosePhoto').onclick=()=>{q('file').removeAttribute('capture');q('file').click()};
+ let photoSelectionVersion=0;
  q('file').addEventListener('change',async()=>{
+  const version=++photoSelectionVersion;
   const f=q('file').files?.[0];selectedPhoto=null;q('upload').disabled=true;
   const panel=q('photoPreview'),img=q('previewImage');panel.hidden=true;
   if(img.dataset.blobUrl){URL.revokeObjectURL(img.dataset.blobUrl);delete img.dataset.blobUrl}
@@ -113,6 +115,7 @@ function page(token){
    say('اضبط الصورة المربعة، ثم راجعها قبل الإرسال.');
    const {openSquarePhotoEditor}=await import('/src/square-photo-editor.js');
    const cropped=await openSquarePhotoEditor(f);
+   if(version!==photoSelectionVersion)return;
    if(!cropped){q('file').value='';say('أُلغي اختيار الصورة. يمكنك اختيار صورة أخرى.');return}
    selectedPhoto=cropped;
    const src=URL.createObjectURL(cropped);img.dataset.blobUrl=src;img.src=src;
@@ -123,6 +126,7 @@ function page(token){
   finally{q('capture').disabled=false;q('choosePhoto').disabled=false}
  });
  q('cancelPhoto').onclick=()=>{
+  photoSelectionVersion++;
   selectedPhoto=null;q('file').value='';q('upload').disabled=true;q('photoPreview').hidden=true;
   const img=q('previewImage');if(img.dataset.blobUrl){URL.revokeObjectURL(img.dataset.blobUrl);delete img.dataset.blobUrl}
   img.removeAttribute('src');say('أُلغي اختيار الصورة. لم تُرسل أي صورة.');
