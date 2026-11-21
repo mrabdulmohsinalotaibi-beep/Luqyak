@@ -32,8 +32,9 @@ test('simplified social home exposes documentation, meetup and memory flows',asy
   assert.equal(response.status,200);
   const html=await response.text();
   assert.match(html,/meetQuick/);
-  assert.match(html,/ذكريات تجمعنا/);
-  assert.match(html,/وثّق لقاء أو مناسبة/);
+  assert.match(html,/اللقاءات تصنع الحكاية/);
+  assert.match(html,/لحظات الأصدقاء/);
+  assert.match(html,/lk-home-story-track/);
   assert.match(html,/data-tab="home"/);
   assert.match(html,/data-tab="meet"/);
   assert.match(html,/data-tab="memories"/);
@@ -88,7 +89,7 @@ test.todo('closed-app iOS and Android notification delivery needs physical devic
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
 
 test('in-app logo uses an alpha-safe existing SVG, without a baked-in white square',async()=>{
-  const logo=await get('/brand/logo.svg');
+  const logo=await get('/brand/luqyak-2026-logo.svg');
   assert.equal(logo.status,200);
   assert.match(logo.headers.get('content-type')||'',/image\/svg\+xml/);
   const svg=await logo.text();
@@ -97,7 +98,7 @@ test('in-app logo uses an alpha-safe existing SVG, without a baked-in white squa
   assert.doesNotMatch(svg,/<rect\b[^>]*fill=["'](?:white|#fff(?:fff)?|#F7F1E9)["']/i);
   const app=await get('/app');
   assert.equal(app.status,200);
-  assert.match(await app.text(),/src="\/brand\/luqyak-logo-transparent\.svg\?v=20261114c"/);
+  assert.match(await app.text(),/src="\\/brand\\/luqyak-2026-logo\\.svg\\?v=20261115olivegold3"/);
 });
 
 test('account settings no longer expose per-device display preferences',async()=>{
