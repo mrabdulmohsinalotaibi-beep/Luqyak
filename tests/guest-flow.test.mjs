@@ -79,3 +79,33 @@ test('guest invitation landing page uses a private non-cacheable response',async
  assert.match(html,/الدخول كضيف/);
  assert.match(html,/حفظ المناسبة في حسابي/);
 });
+
+test('oversized guest photo is rejected without storage even when Content-Length is absent',async()=>{
+ const {env,photos}=mocked();
+ let storageWrites=0;
+ env.PHOTOS.put=async()=>{storageWrites++;throw Error('unexpected storage write')};
+ const join=await guestHandler(new Request(root+'/api/guest/join?token='+token,{
+  method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify({name:'ضيف المناسبة'})
+ }),env);
+ assert.equal(join.status,201);
+ const cookie=join.headers.get('set-cookie');
+ const bytes=new Uint8Array(2500001);bytes[0]=255;bytes[1]=216;bytes[bytes.length-2]=255;bytes[bytes.length-1]=217;
+ const response=await guestHandler(new Request(root+'/api/guest/upload?token='+token,{
+  method:'POST',headers:{cookie,origin:root,'content-type':'image/jpeg'},body:bytes
+ }),env);
+ assert.equal(response.status,413);
+ assert.equal((await response.json()).error,'too_large');
+ assert.equal(storageWrites,0);
+ assert.equal(photos.length,0);
+});
+test('a declared oversized image is rejected before its body is read',async()=>{
+ const {env}=mocked();
+ const join=await guestHandler(new Request(root+'/api/guest/join?token='+token,{
+  method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify({name:'ضيف المناسبة'})
+ }),env);
+ const response=await guestHandler(new Request(root+'/api/guest/upload?token='+token,{
+  method:'POST',headers:{cookie:join.headers.get('set-cookie'),origin:root,'content-type':'image/jpeg','content-length':'2500001'},body:new Uint8Array(256)
+ }),env);
+ assert.equal(response.status,413);
+ assert.equal((await response.json()).error,'too_large');
+});
