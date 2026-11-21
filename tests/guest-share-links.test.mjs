@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { guestHandler } from '../guest.js';
+import { guestHandler, guestOwnerHandler } from '../guest.js';
 import { readFileSync } from 'node:fs';
 
 const source=readFileSync(new URL('../guest.js',import.meta.url),'utf8');
@@ -39,6 +39,42 @@ test('viewer link permits photo viewing but not uploads',async()=>{
  assert.equal(data.allowed,true);
  assert.equal(data.photos.length,1);
 });
+test('one combined guest link permits uploading and viewing approved photos',async()=>{
+ const env=fakeEnv(1,1);
+ const r=await guestHandler(new Request('https://luqyak.athat.app/api/guest/album?token='+token,{headers:{cookie}}),env);
+ assert.equal(r.status,200);
+ const data=await r.json();
+ assert.equal(data.access,'both');
+ assert.equal(data.canUpload,true);
+ assert.equal(data.allowed,true);
+ assert.equal(data.photos.length,1);
+});
+test('owner creates one combined link with approved-photo moderation still enabled',async()=>{
+ const origin='https://luqyak.athat.app',meeting='00000000-0000-4000-8000-000000000042';
+ const inserts=[];
+ const env={DB:{prepare(sql){return {bind(...params){return {
+  async first(){
+   if(sql.includes('FROM auth_sessions'))return {id:'owner-1'};
+   if(sql.includes('SELECT owner_id,privacy,ended FROM lk_meetups'))return {owner_id:'owner-1',privacy:'friends',ended:0};
+   if(sql.includes('SELECT COUNT(*) n FROM lk_guest_links'))return {n:0};
+   throw Error('Unexpected lookup '+sql);
+  },
+  async run(){if(sql.includes('INSERT INTO lk_guest_links')){inserts.push(params);return {meta:{changes:1}}}throw Error('Unexpected write '+sql)}
+ }}}}}};
+ const headers={cookie:'__Host-luqyak_session='+('c'.repeat(64)),origin,'content-type':'application/json'};
+ const request=(permissions)=>new Request(origin+'/api/guest/create-link',{method:'POST',headers,body:JSON.stringify({meetup_id:meeting,mode:'link',duration_hours:24,review_photos:true,...permissions})});
+ const res=await guestOwnerHandler(request({can_view:true,can_upload:true}),env);
+ assert.equal(res.status,200);
+ const data=await res.json();
+ assert.equal(data.linkType,'both');
+ assert.match(data.url,/^https:\/\/luqyak\.athat\.app\/g\/[a-f0-9]{64}$/);
+ assert.equal(inserts.length,1);
+ assert.deepEqual(inserts[0].slice(4,7),[1,1,1]);
+ const invalid=await guestOwnerHandler(request({can_view:false,can_upload:false}),env);
+ assert.equal(invalid.status,400);
+ assert.equal((await invalid.json()).error,'invalid_purpose');
+ assert.equal(inserts.length,1,'Invalid requests must not write a link');
+});
 test('revoked guest membership cannot enumerate or download album photos',async()=>{
  const env=fakeEnv(1,0,'revoked');
  const album=await guestHandler(new Request('https://luqyak.athat.app/api/guest/album?token='+token,{headers:{cookie}}),env);
@@ -58,13 +94,16 @@ test('guest links cannot silently grant full meetup membership',()=>{
  assert.match(source,/read_only_link/);
  assert.match(source,/apiPath==='extend'/);
 });
-test('sharing UI separates purposes, duration and WhatsApp delivery',()=>{
- assert.match(app,/lkSharePurpose/);
+test('sharing dialog creates one combined photo link and keeps duration, approval and WhatsApp',()=>{
+ assert.doesNotMatch(app,/lkSharePurpose/);
+ assert.match(app,/const capture=!m\.ended/);
+ assert.match(app,/can_view:true,can_upload:capture/);
  assert.match(app,/lkShareDuration/);
+ assert.match(app,/lkShareReview/);
+ assert.match(app,/رابط إضافة ومشاهدة الصور/);
  assert.match(app,/wa\.me\/\?text=/);
  assert.match(source,/savePdf/);
 });
-
 test('guest image flow uses a permitted blob preview, square preflight and explicit send or cancel',()=>{
  assert.match(source,/img-src 'self' data: blob:/);
  assert.match(source,/id="cancelPhoto"/);
