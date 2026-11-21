@@ -4,6 +4,37 @@ const reply=(obj,status=200,extra={})=>new Response(JSON.stringify(obj),{status,
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 async function digest(str){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str))),b=>b.toString(16).padStart(2,'0')).join('')}
 const matchToken=s=>/^[a-f0-9]{64}$/.test(s||'');
+// Read in bounded chunks even when a client omits or lies about Content-Length.
+async function readGuestJpeg(request,maxBytes=2500000){
+ const raw=request.headers.get('content-length');
+ if(raw!==null){
+  const declared=Number(raw);
+  if(!Number.isSafeInteger(declared)||declared<0)return {error:'invalid_length',status:400};
+  if(declared>maxBytes)return {error:'too_large',status:413};
+ }
+ if(!request.body)return {error:'invalid_image',status:400};
+ const reader=request.body.getReader(),chunks=[];
+ let total=0;
+ try{
+  for(;;){
+   const {done,value}=await reader.read();
+   if(done)break;
+   if(!(value instanceof Uint8Array))return {error:'invalid_image',status:400};
+   total+=value.byteLength;
+   if(total>maxBytes)return {error:'too_large',status:413};
+   chunks.push(value);
+  }
+ }finally{
+  try{await reader.cancel()}catch{}
+ }
+ if(raw!==null&&Number(raw)!==total)return {error:'invalid_length',status:400};
+ if(total<200)return {error:'invalid_image',status:400};
+ const bytes=new Uint8Array(total);
+ let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength}
+ if(bytes[0]!==255||bytes[1]!==216||bytes.at(-2)!==255||bytes.at(-1)!==217)return {error:'invalid_image',status:400};
+ return {bytes};
+}
+
 async function viewer(request,env){
  const m=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/);
  if(!m)return null;
@@ -155,8 +186,8 @@ export async function guestHandler(request,env){
   if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
   if(!canUpload||(link.mode==='accounts'&&!actor))return reply({error:'not_allowed'},403);
   if(!(request.headers.get('content-type')||'').startsWith('image/jpeg'))return reply({error:'jpeg_required'},415);
-  const size=Number(request.headers.get('content-length')||0);if(size>2500000)return reply({error:'too_large'},413);
-  const bytes=new Uint8Array(await request.arrayBuffer());if(bytes.length<200||bytes.length>2500000||bytes[0]!==255||bytes[1]!==216||bytes.at(-2)!==255||bytes.at(-1)!==217)return reply({error:'invalid_image'},400);
+  const read=await readGuestJpeg(request);if(read.error)return reply({error:read.error},read.status);
+  const bytes=read.bytes;
   const count=await env.DB.prepare("SELECT COUNT(*) n FROM lk_guest_photos WHERE guest_id=? AND created_at>datetime('now','-1 hour')").bind(guest.id).first();if(count.n>=20)return reply({error:'rate_limited'},429);
   const id=crypto.randomUUID(),key='meetup-albums/'+link.meetup_id+'/guest-'+id+'.jpg';
   await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType:'image/jpeg'},onlyIf:{etagDoesNotMatch:'*'}});
