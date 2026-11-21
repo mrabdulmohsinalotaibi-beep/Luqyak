@@ -70,12 +70,12 @@ test('guest links cannot silently grant full meetup membership',()=>{
 });
 test('sharing dialog creates one combined photo link and keeps duration, approval and WhatsApp',()=>{
  assert.doesNotMatch(app,/lkSharePurpose/);
- assert.match(app,/const capture=!m\\.ended/);
+ assert.match(app,/const capture=!m\.ended/);
  assert.match(app,/can_view:true,can_upload:capture/);
  assert.match(app,/lkShareDuration/);
  assert.match(app,/lkShareReview/);
  assert.match(app,/رابط إضافة ومشاهدة الصور/);
- assert.match(app,/wa\\.me\\/\\?text=/);
+ assert.match(app,/wa\.me\/\?text=/);
  assert.match(source,/savePdf/);
 });
 test('guest image flow uses a permitted blob preview, square preflight and explicit send or cancel',()=>{
