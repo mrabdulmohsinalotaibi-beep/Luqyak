@@ -4,6 +4,8 @@ const reply=(obj,status=200,extra={})=>new Response(JSON.stringify(obj),{status,
 const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 async function digest(str){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str))),b=>b.toString(16).padStart(2,'0')).join('')}
 const matchToken=s=>/^[a-f0-9]{64}$/.test(s||'');
+const captureWindowHours=new Set([1,2,3,24]);
+const hasCaptureExpired=link=>!!(link.capture_expires_at&&Date.parse(link.capture_expires_at)<=Date.now());
 async function viewer(request,env){
  const m=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-luqyak_session=([a-f0-9]{64})(?:;|$)/);
  if(!m)return null;
@@ -25,7 +27,7 @@ function page(token){
  const token=${JSON.stringify(token)};const q=id=>document.getElementById(id);
  async function call(path,options={}){const r=await fetch('/api/guest/'+path+(path.includes('?')?'&':'?')+'token='+encodeURIComponent(token),{credentials:'same-origin',cache:'no-store',...options});const v=await r.json();if(!r.ok)throw Error(v.message||v.error||'تعذر إكمال العملية');return v}
  const say=m=>q('status').textContent=m;
- async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!(v.allowed||v.canUpload);q('file').hidden=!v.canUpload;q('upload').hidden=!v.canUpload;q('gallery').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('ownerPanel').hidden=!v.owner;if(v.owner)await loadModeration();q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const button=document.createElement('button'),image=document.createElement('img');button.className='secondary';button.type='button';button.setAttribute('aria-label','عرض الصورة والتعليقات');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);button.append(image);button.onclick=()=>openPhoto(p.id);q('gallery').append(button)}}catch(e){say(e.message)}}
+ async function load(){try{const v=await call('album');q('name').textContent=v.title;q('details').textContent=v.place+' · '+new Date(v.time).toLocaleDateString('ar-SA');q('entry').hidden=v.joined;q('album').hidden=!(v.allowed||v.canUpload);q('file').hidden=!v.canUpload;q('upload').hidden=!v.canUpload;q('gallery').hidden=!v.allowed;q('join').disabled=false;if(v.mode==='accounts')say('هذه المناسبة تتطلب تسجيل الدخول بحساب لُقياك.');else if(v.joined&&!v.allowed&&v.captureExpired)say('انتهت مدة التصوير. يمكن لصاحب اللقاء تمديدها.');else if(v.joined&&!v.allowed)say('طلب المشاركة ينتظر الموافقة.');else say('');q('ownerPanel').hidden=!v.owner;if(v.owner)await loadModeration();q('gallery').replaceChildren();if(v.allowed)for(const p of v.photos){const button=document.createElement('button'),image=document.createElement('img');button.className='secondary';button.type='button';button.setAttribute('aria-label','عرض الصورة والتعليقات');image.loading='lazy';image.alt='صورة من المناسبة';image.src='/api/guest/photo?token='+encodeURIComponent(token)+'&photo='+encodeURIComponent(p.id);button.append(image);button.onclick=()=>openPhoto(p.id);q('gallery').append(button)}}catch(e){say(e.message)}}
  async function openPhoto(photoId){
   const dlg=document.createElement('dialog');dlg.style.cssText='width:min(96vw,570px);max-height:90dvh;overflow:auto;border:0;border-radius:20px;padding:16px;background:#fff;color:#392c27';
   const close=document.createElement('button');close.textContent='إغلاق';close.className='secondary';close.onclick=()=>dlg.close();dlg.append(close);
@@ -85,11 +87,11 @@ export async function guestHandler(request,env){
  const guest=await guestFor(request,env,link);
  const actor=await viewer(request,env);
  const owner=actor?.id===link.owner_id;
- const approved=guest?.status==='accepted',allowed=owner||(approved&&link.can_view===1),canUpload=approved&&link.can_upload===1&&!link.ended;
+ const approved=guest?.status==='accepted',allowed=owner||(approved&&link.can_view===1),canUpload=approved&&link.can_upload===1&&!link.ended&&!hasCaptureExpired(link);
  const apiPath=path.replace('/api/guest/','');
  if(apiPath==='album'&&method==='GET'){
   const photos=allowed?(await env.DB.prepare("SELECT id FROM lk_meetup_photos WHERE meetup_id=? UNION ALL SELECT id FROM lk_guest_photos WHERE meetup_id=? AND status='approved' LIMIT 180").bind(link.meetup_id,link.meetup_id).all()).results:[];
-  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,canUpload,owner,photos});
+  return reply({title:link.title,place:link.place,time:link.starts_at,mode:link.mode,joined:!!guest,allowed,canUpload,owner,photos,captureExpiresAt:link.capture_expires_at||null,captureExpired:hasCaptureExpired(link)});
  }
  if(apiPath==='join'&&method==='POST'){
   if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
@@ -150,18 +152,69 @@ export async function guestHandler(request,env){
  }catch(e){console.error('guest album error',String(e));return reply({error:'guest_album_unavailable'},503)}
 }
 export async function guestOwnerHandler(request,env){
- const url=new URL(request.url);
- if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
+ const url=new URL(request.url),method=request.method;
+ if(method!=='GET'&&method!=='POST')return reply({error:'method_not_allowed'},405);
+ if(method==='POST'&&request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
  const actor=await viewer(request,env);if(!actor)return reply({error:'login_required'},401);
- const b=await request.json(),id=String(b.meetup_id||'');
+ const b=method==='GET'?{}:await request.json(),id=String(method==='GET'?url.searchParams.get('meetup_id')||'':b.meetup_id||'');
  if(!/^[a-f0-9-]{36}$/.test(id))return reply({error:'invalid_meetup'},400);
  const meet=await env.DB.prepare('SELECT owner_id,privacy FROM lk_meetups WHERE id=?').bind(id).first();
  if(!meet||meet.owner_id!==actor.id)return reply({error:'not_allowed'},403);
  if(meet.privacy==='private')return reply({error:'private_meetup'},403);
+ if(method==='GET'){
+  const rows=(await env.DB.prepare('SELECT token_hash,mode,can_view,can_upload,review_photos,capture_expires_at,created_at FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 100').bind(id,actor.id).all()).results;
+  return reply({links:rows.map(row=>({id:row.token_hash,mode:row.mode,can_view:row.can_view===1,can_upload:row.can_upload===1,review_photos:row.review_photos===1,capture_expires_at:row.capture_expires_at||null,created_at:row.created_at}))});
+ }
+ if(b.action==='manage_link'){
+  const linkHash=String(b.link_hash||'');
+  const operation=String(b.operation||'');
+  if(!matchToken(linkHash)||!['extend','stop','revoke'].includes(operation))return reply({error:'invalid_management_action'},400);
+  const existing=await env.DB.prepare('SELECT can_upload,revoked_at FROM lk_guest_links WHERE token_hash=? AND meetup_id=? AND owner_id=?').bind(linkHash,id,actor.id).first();
+  if(!existing||existing.revoked_at)return reply({error:'not_allowed'},403);
+  if(operation==='extend'){
+   const hours=Number(b.hours);
+   if(existing.can_upload!==1||!captureWindowHours.has(hours))return reply({error:'invalid_extension'},400);
+   const expiry=new Date(Date.now()+hours*3600000).toISOString();
+   await env.DB.prepare('UPDATE lk_guest_links SET capture_expires_at=? WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL AND can_upload=1').bind(expiry,linkHash,id,actor.id).run();
+   return reply({ok:true,capture_expires_at:expiry});
+  }
+  if(operation==='stop'){
+   if(existing.can_upload!==1)return reply({error:'not_allowed'},403);
+   const expiry=new Date(Date.now()-1000).toISOString();
+   await env.DB.prepare('UPDATE lk_guest_links SET capture_expires_at=? WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL AND can_upload=1').bind(expiry,linkHash,id,actor.id).run();
+   return reply({ok:true,capture_expires_at:expiry});
+  }
+  await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(linkHash,id,actor.id).run();
+  return reply({ok:true,revoked:true});
+ }
+ if(b.action==='extend_capture'){
+  const raw=String(b.capture_token||'');
+  const hours=Number(b.hours);
+  if(!matchToken(raw)||!captureWindowHours.has(hours))return reply({error:'invalid_extension'},400);
+  const tokenHash=await digest(raw);
+  const existing=await env.DB.prepare('SELECT can_upload,revoked_at FROM lk_guest_links WHERE token_hash=? AND meetup_id=? AND owner_id=?').bind(tokenHash,id,actor.id).first();
+  if(!existing||existing.revoked_at||existing.can_upload!==1)return reply({error:'not_allowed'},403);
+  const expiry=new Date(Date.now()+hours*3600000).toISOString();
+  await env.DB.prepare('UPDATE lk_guest_links SET capture_expires_at=? WHERE token_hash=? AND meetup_id=? AND owner_id=? AND revoked_at IS NULL AND can_upload=1').bind(expiry,tokenHash,id,actor.id).run();
+  return reply({ok:true,capture_expires_at:expiry});
+ }
  const mode=String(b.mode||'link');
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
  const token=random();
  const active=await env.DB.prepare('SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL').bind(id,actor.id).first();
+ if(b.link_set==='split'){
+  const hours=Number(b.hours??2);
+  if(!captureWindowHours.has(hours))return reply({error:'invalid_duration'},400);
+  const expiry=new Date(Date.now()+hours*3600000).toISOString();
+  if(active.n>10)return reply({error:'link_limit',message:'يلزم توفر رابطين جديدين. ألغِ روابط قديمة أولًا.'},429);
+  const captureToken=token,viewToken=random();
+  const insert="INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos,capture_expires_at) VALUES(?,?,?,?,?,?,?,?)";
+  const capture=env.DB.prepare(insert).bind(await digest(captureToken),id,actor.id,mode,0,1,b.review_photos===true?1:0,expiry);
+  const view=env.DB.prepare(insert).bind(await digest(viewToken),id,actor.id,mode,1,0,0,null);
+  // D1 batch is transactional: neither link survives if the other insert fails.
+  await env.DB.batch([capture,view]);
+  return reply({ok:true,url:url.origin+'/g/'+captureToken,capture_url:url.origin+'/g/'+captureToken,view_url:url.origin+'/g/'+viewToken,capture_expires_at:expiry},201);
+ }
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos) VALUES(?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,b.can_view===false?0:1,b.can_upload===false?0:1,b.review_photos===true?1:0).run();
  return reply({ok:true,url:url.origin+'/g/'+token});
