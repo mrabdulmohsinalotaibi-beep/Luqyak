@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import worker from '../worker.js';
 
 const origin='https://luqyak.athat.app';
@@ -26,12 +25,12 @@ function fakeEnv({active=true}={}){
  };
 }
 
-test('private relay denies inactive account even with otherwise valid session',async()=>{
+test('retired private status route cannot reveal account state',async()=>{
  const db=fakeEnv({active:false});
  const res=await worker.fetch(new Request(origin+'/api/private/status',{headers:{cookie}}),db.env,{waitUntil(){}});
- assert.equal(res.status,401);
- assert.equal((await res.json()).error,'login_required');
- assert.ok(db.statements.some(s=>s.includes("u.account_status='active'")));
+ assert.equal(res.status,410);
+ assert.equal((await res.json()).error,'feature_removed');
+ assert.deepEqual(db.statements,[]);
 });
 
 test('private relay rejects missing or foreign origin for authenticated POST requests',async()=>{
@@ -47,43 +46,30 @@ test('private relay rejects missing or foreign origin for authenticated POST req
  }
 });
 
-test('private public-key username lookup is restricted to accepted and active friends',async()=>{
- const db=fakeEnv();
- const res=await worker.fetch(new Request(origin+'/api/private/lookup?username=someone'),db.env,{waitUntil(){}});
- assert.equal(res.status,401,'anonymous lookup denied');
- const auth=await worker.fetch(new Request(origin+'/api/private/lookup?username=someone',{headers:{cookie}}),db.env,{waitUntil(){}});
- assert.equal(auth.status,200);
- assert.equal((await auth.json()).user,null);
- assert.ok(db.statements.some(sql=>sql.includes("f.status='accepted'")&&sql.includes("u.account_status='active'")));
-});
-
-test('encrypted send requires accepted friendship and active target',()=>{
- const source=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
- assert.match(source,/SELECT p\.user_id FROM encrypted_public_keys p JOIN users u ON u\.id=p\.user_id WHERE p\.user_id=\? AND u\.account_status='active' AND EXISTS\(SELECT 1 FROM luqyak_friend_requests/);
-});
-
-test('encrypted key lookup denies a blocked peer even with accepted friendship',async()=>{
- const peer='00000000-0000-4000-8000-000000000011';
- for(const lookup of ['peer_id='+peer,'username=someone']){
-  let lookupQueried=false;
-  const env={DB:{prepare(sql){return {bind(...args){return {
-   async first(){
-    if(sql.includes('FROM auth_sessions'))return {id:actor,username:'tester'};
-    if(sql.includes('FROM users u JOIN encrypted_public_keys')){
-     lookupQueried=true;
-     assert.match(sql,/NOT EXISTS\(SELECT 1 FROM lk_user_blocks/);
-     assert.equal(args.length,6);
-     assert.equal(args[4],actor);
-     assert.equal(args[5],actor);
-     return null;
-    }
-    throw Error('Unexpected query: '+sql);
-   },
-   async run(){throw Error('Unexpected write')}
-  }}}}}};
-  const res=await worker.fetch(new Request(origin+'/api/private/lookup?'+lookup,{headers:{cookie}}),env,{waitUntil(){}});
-  assert.equal(res.status,200);
-  assert.equal((await res.json()).user,null);
-  assert.equal(lookupQueried,true);
+test('retired public-key lookup never reveals contacts or performs DB reads',async()=>{
+ for(const suffix of ['username=someone','peer_id=00000000-0000-4000-8000-000000000011']){
+  for(const headers of [{},{cookie}]){
+   const db=fakeEnv();
+   const res=await worker.fetch(new Request(origin+'/api/private/lookup?'+suffix,{headers}),db.env,{waitUntil(){}});
+   assert.equal(res.status,410);
+   assert.equal((await res.json()).error,'feature_removed');
+   assert.deepEqual(db.statements,[]);
+  }
  }
+});
+
+test('retired private relay cannot accept encrypted writes',async()=>{
+ const db=fakeEnv();
+ const res=await worker.fetch(new Request(origin+'/api/private/send',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:'{}'}),db.env,{waitUntil(){}});
+ assert.equal(res.status,410);
+ assert.equal((await res.json()).error,'feature_removed');
+ assert.deepEqual(db.statements,[]);
+});
+
+test('removed key route refuses registration with no read or write',async()=>{
+ const db=fakeEnv();
+ const res=await worker.fetch(new Request(origin+'/api/private/key',{method:'POST',headers:{cookie,origin,'content-type':'application/json'},body:'{}'}),db.env,{waitUntil(){}});
+ assert.equal(res.status,410);
+ assert.equal((await res.json()).error,'feature_removed');
+ assert.deepEqual(db.statements,[]);
 });
