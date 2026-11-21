@@ -23,7 +23,7 @@ test('active olive and sand palette is applied to the served app', () => {
 });
 
 test('main navigation keeps three tabs and an accessible create-meeting action', () => {
-  const nav=html.match(/<nav class="bottom lk-bottom-premium lk-core-nav"[^>]*>([\\s\\S]*?)<\\/nav>/)?.[1];
+  const nav=html.match(/<nav class="bottom lk-bottom-premium lk-core-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   assert.ok(nav,'missing compact navigation');
   assert.deepEqual([...nav.matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]),['home','meet','memories']);
   assert.match(nav,/data-action="meetQuick"/);
