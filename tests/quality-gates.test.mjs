@@ -229,3 +229,12 @@ test('personal-photo API filters upload ownership and reuses photo permission ch
  assert.ok(code.includes("g.claimed_user_id=? AND g.status='accepted'"));
  assert.ok(code.includes('const permissions=await can(m)'));
 });
+
+test('served Memories module always matches the source file',async()=>{
+ const response=await get('/src/my-memories.js');
+ assert.equal(response.status,200);
+ const served=await response.text();
+ const source=await (await import('node:fs/promises')).readFile(new URL('../src/my-memories.js',import.meta.url),'utf8');
+ assert.equal(served,source,'Update the embedded Worker module when its source changes');
+ assert.match(served,/const perPage=6/);
+});
