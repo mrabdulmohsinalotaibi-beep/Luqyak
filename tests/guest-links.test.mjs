@@ -37,3 +37,15 @@ test('owner alone can enumerate and manage share links without disclosing raw UR
  assert.match(code,/!\['revoke','extend'\]\.includes\(action\)/);
  assert.match(code,/if\(link\.ended&&link\.can_upload===1\)/);
 });
+
+test('capture page has a deliberate choose-preview-send flow',()=>{
+ const page=code.slice(code.indexOf('function page(token)'),code.indexOf('export async function guestHandler'));
+ assert.match(page,/id="choosePhoto"/);
+ assert.match(page,/id="photoPreview"/);
+ assert.match(page,/id="upload" disabled/);
+ assert.match(page,/q\('file'\)\.addEventListener\('change'/);
+ assert.match(page,/إرسال الصورة الآن/);
+ assert.match(page,/جارٍ إرسال الصورة بأمان/);
+ assert.match(page,/أُرسلت الصورة بنجاح/);
+ assert.match(page,/background:#f8f6f1/);
+});
