@@ -101,7 +101,6 @@ export async function guestHandler(request,env){
   if(count.n>=200)return reply({error:'guest_limit'},429);
   const session=random(),status=link.mode==='approval'?'pending':'accepted';
   await env.DB.prepare("INSERT INTO lk_guest_members(id,token_hash,display_name,session_hash,status,claimed_user_id) VALUES(?,?,?,?,?,?)").bind(crypto.randomUUID(),link.token_hash,name,await digest(session),status,actor?.id||null).run();
-  if(status==='accepted'&&actor)await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,actor.id).run();
   return reply({ok:true,status},201,{'set-cookie':'__Host-luqyak_guest_'+link.token_hash.slice(0,16)+'='+session+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'});
  }
  if(apiPath==='interact'&&allowed){const pid=url.searchParams.get('photo');const row=await env.DB.prepare("SELECT id FROM lk_guest_photos WHERE id=? AND meetup_id=? AND status='approved'").bind(pid,link.meetup_id).first();if(!row)return reply({error:'not_found'},404);return guestPhotoInteraction(request,env,pid,owner?'user':'guest',owner?actor.id:guest.id)}
@@ -129,7 +128,6 @@ export async function guestHandler(request,env){
   if(!guest||!actor)return reply({error:'login_required'},401);
   if(guest.claimed_user_id&&guest.claimed_user_id!==actor.id)return reply({error:'already_claimed'},409);
   await env.DB.prepare("UPDATE lk_guest_members SET claimed_user_id=? WHERE id=? AND (claimed_user_id IS NULL OR claimed_user_id=?)").bind(actor.id,guest.id,actor.id).run();
-  if(guest.status==='accepted')await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,actor.id).run();
   return reply({ok:true});
  }
  if(apiPath==='extend'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){\n  const b=await request.json().catch(()=>({}));const hours=Number(b.hours);\n  if(![1,2,3,24,48,168].includes(hours))return reply({error:'invalid_duration'},400);\n  await env.DB.prepare(\"UPDATE lk_guest_links SET expires_at=datetime(MAX(COALESCE(expires_at,datetime('now')),datetime('now')),'+'||?||' hours') WHERE token_hash=? AND owner_id=?\").bind(hours,link.token_hash,actor.id).run();\n  return reply({ok:true,extendedHours:hours});\n }\n if(apiPath==='revoke'&&owner&&method==='POST'&&request.headers.get('origin')===url.origin){await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND owner_id=?').bind(link.token_hash,actor.id).run();return reply({ok:true})}
@@ -141,7 +139,7 @@ export async function guestHandler(request,env){
   }
   if(method==='POST'&&request.headers.get('origin')===url.origin){
    const b=await request.json();if(!['approve','reject'].includes(b.action)||!['guest','photo'].includes(b.kind)||!/^[a-f0-9-]{36}$/.test(b.id||''))return reply({error:'invalid_request'},400);
-   if(b.kind==='guest'){await env.DB.prepare("UPDATE lk_guest_members SET status=? WHERE id=? AND token_hash=?").bind(b.action==='approve'?'accepted':'rejected',b.id,link.token_hash).run();if(b.action==='approve'){const member=await env.DB.prepare("SELECT claimed_user_id FROM lk_guest_members WHERE id=? AND token_hash=?").bind(b.id,link.token_hash).first();if(member?.claimed_user_id)await env.DB.prepare("INSERT INTO lk_meetup_members(meetup_id,user_id,status) VALUES(?,?,'accepted') ON CONFLICT(meetup_id,user_id) DO UPDATE SET status='accepted'").bind(link.meetup_id,member.claimed_user_id).run()}}
+   if(b.kind==='guest'){await env.DB.prepare("UPDATE lk_guest_members SET status=? WHERE id=? AND token_hash=?").bind(b.action==='approve'?'accepted':'rejected',b.id,link.token_hash).run();if(b.action==='approve'){const member=await env.DB.prepare("SELECT claimed_user_id FROM lk_guest_members WHERE id=? AND token_hash=?").bind(b.id,link.token_hash).first();}}
    else await env.DB.prepare("UPDATE lk_guest_photos SET status=? WHERE id=? AND meetup_id=?").bind(b.action==='approve'?'approved':'rejected',b.id,link.meetup_id).run();
    return reply({ok:true});
   }
