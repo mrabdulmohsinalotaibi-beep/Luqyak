@@ -56,3 +56,18 @@ test('legacy single link stays available and defaults to both capabilities',asyn
  assert.equal(data.capture_url,undefined);
  assert.deepEqual(fixture.created[0].slice(4,7),[1,1,0]);
 });
+
+test('owner UI requests independent link capabilities and shows two separate actions',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+ const begin=source.indexOf('async function share(){');
+ const end=source.indexOf('function album(){',begin);
+ assert.ok(begin>=0&&end>begin);
+ const ui=source.slice(begin,end);
+ assert.match(ui,/link_set:'split'/);
+ assert.match(ui,/data\.capture_url/);
+ assert.match(ui,/data\.view_url/);
+ assert.match(ui,/نسخ /);
+ assert.match(ui,/مشاركة /);
+ assert.doesNotMatch(ui,/lkShareView|lkShareUpload/);
+});
