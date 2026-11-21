@@ -2,27 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const source=readFileSync(new URL('../worker.js', import.meta.url),'utf8');
-test('Logo palette is present in app and secondary pages',()=>{
+test('olive and sand theme is consistent across current app pages',()=>{
  assert.match(source,/Logo matched identity/);
- for(const color of ['#2F5D4B','#9A3D27','#7A4E3A','#F8F5F1','#EADFCF'])assert.ok(source.includes(color),color);
- for(const page of ['/account-chat','/notifications','/private']){
-  const start=source.indexOf("if(path==='"+page+"')return");
+ assert.match(source,/#354434/);
+ assert.match(source,/#F5F0E4/);
+ for(const page of ['/app','/notifications','/private']){
+  const start=source.indexOf("if(path==='"+page+"')return new Response(");
   const end=source.indexOf('</head>',start);
-  assert.ok(start>=0&&end>start);
-  assert.match(source.slice(start,end),/lk-coordinated-brand/);
+  assert.ok(start>=0&&end>start,'missing page '+page);
+  const head=source.slice(start,end);
+  assert.ok(head.includes('#354434'),'theme mismatch on '+page);
+  assert.ok(head.includes('/v2/theme.css'),'missing shared stylesheet on '+page);
  }
 });
-test('Homepage contains usable shortcut actions',()=>{
+test('photo-led home retains shared feed and meeting entry points',()=>{
  const start=source.indexOf('function home(){');
- const end=source.indexOf('function memories(){',start);
- const html=source.slice(start,end);
+ const end=source.indexOf('async function lkHomeEnsureDetails',start);
  assert.ok(start>0&&end>start);
- assert.match(html,/lk-identity-shortcuts/);
- for(const action of ['meetQuick','memories','chats'])assert.ok(html.includes('data-action=\\\"'+action+'\\\"'));
- const bind=source.slice(source.indexOf('function bind(){'),source.indexOf('async function share(){'));
- assert.match(bind,/meetQuick/);
- assert.match(bind,/memories/);
- assert.match(bind,/chats/);
+ const home=source.slice(start,end);
+ for(const part of ['lk-home-story-track','lk-home-photos-empty','data-feed-open','lk-live-invitehint'])
+  assert.ok(home.includes(part),'missing home component '+part);
+ const quote=String.fromCharCode(92,34);
+ for(const action of ['meet','meetQuick'])
+  assert.ok(home.includes('data-action='+quote+action+quote),'missing home action '+action);
+ assert.ok(!home.includes('data-action='+quote+'chats'+quote));
 });
 test('New theme keeps core worker features',()=>{
  for(const path of ['/api/social/profile','/api/social/email/request','/api/social/avatar'])assert.ok(source.includes(path));
