@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - guest.js
+      - worker.js
+      - src/my-memories.js
+      - tests/quality-gates.test.mjs
       - src/square-photo-editor.js
       - tests/guest-*.test.mjs
       - .github/workflows/guest-sharing.yml
@@ -25,3 +28,5 @@ jobs:
       - name: Run isolated guest flow and sharing regression tests
         run: |
           node --test tests/guest-flow.test.mjs tests/guest-links.test.mjs tests/guest-share-links.test.mjs
+      - name: Verify photo memories paging and Worker module sync
+        run: node --test --test-name-pattern='Memories shows six personal photos per page|served Memories module always matches the source file' tests/quality-gates.test.mjs
