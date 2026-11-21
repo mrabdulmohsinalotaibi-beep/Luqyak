@@ -9,20 +9,12 @@ const meetup='00000000-0000-4000-8000-000000000012';
 const headers={cookie:'__Host-luqyak_session='+('a'.repeat(64))};
 const ctx={waitUntil(){}};
 
-test('private inbox only returns messages from current, unblocked accepted friends',async()=>{
-  const sqls=[];
-  const env={DB:{prepare(sql){sqls.push(sql);return {bind(){return {
-    async first(){if(sql.includes('FROM auth_sessions'))return {id:actor,username:'receiver'};throw Error('Unexpected read: '+sql)},
-    async run(){if(sql.includes('DELETE FROM encrypted_delivery_queue WHERE expires_at'))return {meta:{changes:0}};throw Error('Unexpected write: '+sql)},
-    async all(){if(sql.includes('FROM encrypted_delivery_queue q'))return {results:[]};throw Error('Unexpected list: '+sql)}
-  }}}}}};
-  const res=await worker.fetch(new Request(origin+'/api/private/inbox',{method:'POST',headers:{...headers,origin,'content-type':'application/json'},body:'{}'}),env,ctx);
-  assert.equal(res.status,200);
-  assert.deepEqual((await res.json()).messages,[]);
-  const inboxSql=sqls.find(q=>q.includes('FROM encrypted_delivery_queue q'));
-  assert.match(inboxSql,/f.status='accepted'/);
-  assert.match(inboxSql,/NOT EXISTS\(SELECT 1 FROM lk_user_blocks/);
-  assert.match(inboxSql,/q.recipient_id=\?/);
+test('removed private inbox rejects requests before any database operation',async()=>{
+ const env={DB:{prepare(){throw Error('Removed inbox must not access private data')}}};
+ const res=await worker.fetch(new Request(origin+'/api/private/inbox',{method:'POST',headers:{...headers,origin,'content-type':'application/json'},body:'{}'}),env,ctx);
+ assert.equal(res.status,410);
+ assert.equal((await res.json()).error,'feature_removed');
+ assert.match(res.headers.get('cache-control')||'',/no-store/);
 });
 
 test('private friendship list excludes blocked and disabled users',async()=>{
@@ -48,6 +40,7 @@ test('previously declined invite cannot be revived by recipient without a new in
       if(sql.includes('SELECT * FROM lk_meetups'))return {id:meetup,owner_id:host,privacy:'specific'};
       if(sql.includes('FROM lk_user_blocks'))return null;
       if(sql.includes('SELECT status FROM lk_meetup_members'))return {status:'declined'};
+      if(sql.includes('FROM lk_guest_members g JOIN lk_guest_links l'))return null;
       throw Error('Unexpected read: '+sql);
     },
     async run(){throw Error('Declined member should not trigger writes')},
