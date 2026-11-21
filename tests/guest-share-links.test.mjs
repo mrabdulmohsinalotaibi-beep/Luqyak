@@ -49,6 +49,32 @@ test('one combined guest link permits uploading and viewing approved photos',asy
  assert.equal(data.allowed,true);
  assert.equal(data.photos.length,1);
 });
+test('owner creates one combined link with approved-photo moderation still enabled',async()=>{
+ const origin='https://luqyak.athat.app',meeting='00000000-0000-4000-8000-000000000042';
+ const inserts=[];
+ const env={DB:{prepare(sql){return {bind(...params){return {
+  async first(){
+   if(sql.includes('FROM auth_sessions'))return {id:'owner-1'};
+   if(sql.includes('SELECT owner_id,privacy,ended FROM lk_meetups'))return {owner_id:'owner-1',privacy:'friends',ended:0};
+   if(sql.includes('SELECT COUNT(*) n FROM lk_guest_links'))return {n:0};
+   throw Error('Unexpected lookup '+sql);
+  },
+  async run(){if(sql.includes('INSERT INTO lk_guest_links')){inserts.push(params);return {meta:{changes:1}}}throw Error('Unexpected write '+sql)}
+ }}}}}};
+ const headers={cookie:'__Host-luqyak_session='+('c'.repeat(64)),origin,'content-type':'application/json'};
+ const request=(permissions)=>new Request(origin+'/api/guest/create-link',{method:'POST',headers,body:JSON.stringify({meetup_id:meeting,mode:'link',duration_hours:24,review_photos:true,...permissions})});
+ const res=await guestOwnerHandler(request({can_view:true,can_upload:true}),env);
+ assert.equal(res.status,200);
+ const data=await res.json();
+ assert.equal(data.linkType,'both');
+ assert.match(data.url,/^https:\/\/luqyak\.athat\.app\/g\/[a-f0-9]{64}$/);
+ assert.equal(inserts.length,1);
+ assert.deepEqual(inserts[0].slice(4,7),[1,1,1]);
+ const invalid=await guestOwnerHandler(request({can_view:false,can_upload:false}),env);
+ assert.equal(invalid.status,400);
+ assert.equal((await invalid.json()).error,'invalid_purpose');
+ assert.equal(inserts.length,1,'Invalid requests must not write a link');
+});
 test('revoked guest membership cannot enumerate or download album photos',async()=>{
  const env=fakeEnv(1,0,'revoked');
  const album=await guestHandler(new Request('https://luqyak.athat.app/api/guest/album?token='+token,{headers:{cookie}}),env);
