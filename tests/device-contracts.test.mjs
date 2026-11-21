@@ -23,7 +23,7 @@ test('installed mobile app has safe-area, active branding and resolvable PNG ico
   assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='192x192'));
   assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='512x512'));
   const touchIcon=html.match(/rel="apple-touch-icon"[^>]+href="([^"]+)"/)?.[1];
-  assert.ok(touchIcon?.startsWith('/brand/luqyak-2026-icon.png?v='),'Current Apple icon missing');
+  assert.equal(touchIcon,'/brand/luqyak-2026-icon.png?v=20261115olivegold3','Apple icon version must not repeat');
   const iconRoute=await worker.fetch(new Request(new URL(touchIcon,origin)),{},ctx);
   assert.equal(iconRoute.status,302,'Apple icon alias must redirect to hosted PNG');
   const location=iconRoute.headers.get('location');
