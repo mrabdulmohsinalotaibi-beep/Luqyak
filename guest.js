@@ -155,25 +155,52 @@ export async function guestHandler(request,env){
  }catch(e){console.error('guest album error',String(e));return reply({error:'guest_album_unavailable'},503)}
 }
 export async function guestOwnerHandler(request,env){
- const url=new URL(request.url);
- if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
+ const url=new URL(request.url),method=request.method,route=url.pathname;
  const actor=await viewer(request,env);if(!actor)return reply({error:'login_required'},401);
- const b=await request.json(),id=String(b.meetup_id||'');
+ if(route==='/api/guest/owner-links'){
+  if(method!=='GET')return reply({error:'method_not_allowed'},405);
+  const id=String(url.searchParams.get('meetup_id')||'');
+  if(!/^[a-f0-9-]{36}$/.test(id))return reply({error:'invalid_meetup'},400);
+  const meet=await env.DB.prepare('SELECT owner_id FROM lk_meetups WHERE id=?').bind(id).first();
+  if(!meet||meet.owner_id!==actor.id)return reply({error:'not_allowed'},403);
+  const rows=await env.DB.prepare("SELECT token_hash,mode,can_view,can_upload,review_photos,expires_at,revoked_at,created_at,CASE WHEN revoked_at IS NOT NULL THEN 'revoked' WHEN expires_at IS NOT NULL AND julianday(expires_at)<=julianday('now') THEN 'expired' ELSE 'active' END AS status FROM lk_guest_links WHERE meetup_id=? AND owner_id=? ORDER BY created_at DESC LIMIT 40").bind(id,actor.id).all();
+  return reply({ok:true,items:(rows.results||[]).map(x=>({id:x.token_hash,mode:x.mode,purpose:x.can_upload===1?'capture':'view',reviewPhotos:x.review_photos===1,createdAt:x.created_at,expiresAt:x.expires_at,status:x.status}))});
+ }
+ if(method!=='POST')return reply({error:'method_not_allowed'},405);
+ if(request.headers.get('origin')!==url.origin)return reply({error:'invalid_origin'},403);
+ if(route==='/api/guest/manage-link'){
+  const b=await request.json().catch(()=>({}));
+  const id=String(b.meetup_id||''),hash=String(b.link_id||''),action=String(b.action||'');
+  if(!/^[a-f0-9-]{36}$/.test(id)||!/^[a-f0-9]{64}$/.test(hash)||!['revoke','extend'].includes(action))return reply({error:'invalid_request'},400);
+  const link=await env.DB.prepare("SELECT l.token_hash,l.revoked_at,l.expires_at,l.can_upload,m.ended FROM lk_guest_links l JOIN lk_meetups m ON l.meetup_id=m.id WHERE l.token_hash=? AND l.meetup_id=? AND l.owner_id=?").bind(hash,id,actor.id).first();
+  if(!link)return reply({error:'not_found'},404);
+  if(link.revoked_at)return reply({error:'link_revoked'},409);
+  if(action==='revoke'){
+   await env.DB.prepare('UPDATE lk_guest_links SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND owner_id=?').bind(hash,actor.id).run();
+   return reply({ok:true,status:'revoked'});
+  }
+  const hours=Number(b.hours);
+  if(![1,2,3,24,48,168].includes(hours))return reply({error:'invalid_duration'},400);
+  if(link.ended&&link.can_upload===1)return reply({error:'meetup_ended'},409);
+  await env.DB.prepare("UPDATE lk_guest_links SET expires_at=datetime(MAX(COALESCE(expires_at,datetime('now')),datetime('now')),'+'||?||' hours') WHERE token_hash=? AND owner_id=? AND revoked_at IS NULL").bind(hours,hash,actor.id).run();
+  return reply({ok:true,status:'active',extendedHours:hours});
+ }
+ if(route!=='/api/guest/create-link')return reply({error:'not_found'},404);
+ const b=await request.json().catch(()=>({})),id=String(b.meetup_id||'');
  if(!/^[a-f0-9-]{36}$/.test(id))return reply({error:'invalid_meetup'},400);
  const meet=await env.DB.prepare('SELECT owner_id,privacy,ended FROM lk_meetups WHERE id=?').bind(id).first();
  if(!meet||meet.owner_id!==actor.id)return reply({error:'not_allowed'},403);
  if(meet.privacy==='private')return reply({error:'private_meetup'},403);
- if(meet.ended&&b.can_upload!==false)return reply({error:'meetup_ended',message:'اللقاء منتهٍ؛ أنشئ رابط مشاهدة فقط'},409);
+ const canView=b.can_view===true,canUpload=b.can_upload===true;
+ if(canView===canUpload)return reply({error:'invalid_purpose',message:'أنشئ رابطًا للتصوير فقط أو للمشاهدة فقط'},400);
+ if(meet.ended&&canUpload)return reply({error:'meetup_ended',message:'اللقاء منتهٍ؛ أنشئ رابط مشاهدة فقط'},409);
  const mode=String(b.mode||'link');
  if(!['link','approval','accounts'].includes(mode))return reply({error:'invalid_mode'},400);
  const duration=Number(b.duration_hours||0);
  if(![0,1,2,3,24,48,168].includes(duration))return reply({error:'invalid_duration'},400);
- const canView=b.can_view===true,canUpload=b.can_upload===true;
- if(canView===canUpload)return reply({error:'invalid_purpose',message:'أنشئ رابطًا للتصوير فقط أو للمشاهدة فقط'},400);
- const token=random();
  const active=await env.DB.prepare("SELECT COUNT(*) n FROM lk_guest_links WHERE meetup_id=? AND owner_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))").bind(id,actor.id).first();
  if(active.n>=12)return reply({error:'link_limit',message:'وصلت إلى الحد الأقصى من الروابط. ألغِ رابطًا قديمًا أولًا.'},429);
- const expiresAt=duration?new Date(Date.now()+duration*3600000).toISOString():null;
+ const token=random(),expiresAt=duration?new Date(Date.now()+duration*3600000).toISOString():null;
  await env.DB.prepare("INSERT INTO lk_guest_links(token_hash,meetup_id,owner_id,mode,can_view,can_upload,review_photos,expires_at) VALUES(?,?,?,?,?,?,?,?)").bind(await digest(token),id,actor.id,mode,canView?1:0,canUpload?1:0,canUpload&&b.review_photos===true?1:0,expiresAt).run();
  return reply({ok:true,url:url.origin+'/g/'+token,expiresAt,linkType:canUpload?'capture':'view'});
 }
