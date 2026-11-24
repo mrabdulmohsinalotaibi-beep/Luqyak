@@ -14,6 +14,9 @@ test('camera provides a cancellable countdown and retains native fallback',()=>{
  assert.match(c,/clearTimeout\(tick\)/);
  assert.match(c,/document.hidden/);
  assert.match(c,/if\(closed\)return;stop\(\);await upload/);
+ assert.ok(c.includes("actualFacing==='user'?'scaleX(-1)':'none'"));
+ assert.ok(c.includes('getSettings?.().facingMode||facing'));
+ assert.doesNotMatch(c,/\.scale\(|\.translate\(/);
  assert.match(c,/lkOpenDeviceCamera\(\)/);
  for(const m of h.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi))new Script(m[1]);
 });
