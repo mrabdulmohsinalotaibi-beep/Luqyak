@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {Script} from 'node:vm';
+test('camera provides a cancellable countdown and retains native fallback',()=>{
+ const s=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+ const k="if(path==='/app')return new Response(";
+ const a=s.indexOf(k)+k.length;
+ const h=JSON.parse(s.slice(a,s.indexOf(",{headers:",a)));
+ const c=h.slice(h.indexOf('async function openCamera()'),h.indexOf('async function normalized(file)'));
+ assert.match(c,/id="cameraTimer"/);
+ assert.match(c,/id="cameraCountdown"/);
+ assert.match(c,/0:3,3:5,5:10,10:0/);
+ assert.match(c,/clearTimeout\(tick\)/);
+ assert.match(c,/document.hidden/);
+ assert.match(c,/if\(closed\)return;stop\(\);await upload/);
+ assert.match(c,/lkOpenDeviceCamera\(\)/);
+ for(const m of h.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi))new Script(m[1]);
+});
