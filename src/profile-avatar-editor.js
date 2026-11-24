@@ -13,7 +13,7 @@ export async function openAvatarCropper(file) {
     await image.decode();
     if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 60000000)
       throw new Error('أبعاد الصورة غير مدعومة');
-    return await new Promise(resolve => {
+    return await new Promise((resolve, reject) => {
       const overlay = document.createElement('div');
       overlay.setAttribute('role', 'dialog');
       overlay.setAttribute('aria-modal', 'true');
@@ -30,6 +30,7 @@ export async function openAvatarCropper(file) {
       document.body.append(overlay);
       const canvas = overlay.querySelector('canvas');
       const ctx = canvas.getContext('2d');
+      if (!ctx) { overlay.remove(); reject(new Error('تعذر فتح محرر الصور')); return; }
       const zoom = overlay.querySelector('input');
       let scale = 1, x = 0, y = 0, dragging = null;
       const base = Math.max(320 / image.naturalWidth, 320 / image.naturalHeight);
@@ -44,7 +45,8 @@ export async function openAvatarCropper(file) {
         const w=image.naturalWidth*base*scale,h=image.naturalHeight*base*scale;
         ctx.drawImage(image,160-w/2+x,160-h/2+y,w,h);ctx.restore();
       };
-      const finish = value => {overlay.remove();resolve(value);};
+      let finished = false;
+      const finish = value => {if(finished)return;finished=true;overlay.remove();resolve(value);};
       zoom.addEventListener('input', () => {scale=Number(zoom.value);paint();});
       canvas.addEventListener('pointerdown',e=>{dragging={id:e.pointerId,x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
       canvas.addEventListener('pointermove',e=>{if(!dragging||dragging.id!==e.pointerId)return;const factor=320/canvas.getBoundingClientRect().width;x+=(e.clientX-dragging.x)*factor;y+=(e.clientY-dragging.y)*factor;dragging.x=e.clientX;dragging.y=e.clientY;paint();});
@@ -52,9 +54,12 @@ export async function openAvatarCropper(file) {
       canvas.addEventListener('pointercancel',()=>{dragging=null;});
       overlay.querySelector('[data-cancel]').onclick=()=>finish(null);
       overlay.querySelector('[data-save]').onclick=async()=>{
-        const button=overlay.querySelector('[data-save]');button.disabled=true;
+        const button=overlay.querySelector('[data-save]');if(finished || button.disabled)return;
+        button.disabled=true;
+        try {
         const output=document.createElement('canvas');output.width=output.height=512;
         const target=output.getContext('2d');
+        if(!target)throw new Error('تعذر تجهيز الصورة');
         target.scale(512/320,512/320);
         const w=image.naturalWidth*base*scale,h=image.naturalHeight*base*scale;
         target.drawImage(image,160-w/2+x,160-h/2+y,w,h);
@@ -63,8 +68,10 @@ export async function openAvatarCropper(file) {
           blob=await new Promise(r=>output.toBlob(r,'image/jpeg',quality));
           if(blob && blob.size<=550000)break;
         }
-        if(!blob || blob.size>550000){button.disabled=false;alert('تعذر ضغط الصورة، جرّب صورة أخرى');return;}
+        if(finished)return;
+        if(!blob || blob.size>550000)throw new Error('تعذر ضغط الصورة، جرّب صورة أخرى');
         finish(blob);
+        } catch(error) { if(!finished){button.disabled=false;alert(error.message || 'تعذر تجهيز الصورة');} }
       };
       paint();
     });
