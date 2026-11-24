@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const source=readFileSync(new URL('../worker.js', import.meta.url),'utf8');
-test('olive and sand theme is consistent across current app pages',()=>{
+test('forest green and warm cream theme is consistent across current app pages',()=>{
  assert.match(source,/Logo matched identity/);
- assert.match(source,/#354434/);
- assert.match(source,/#F5F0E4/);
+ assert.match(source,/#395344/);
+ assert.match(source,/#FAF6F2/);
  for(const page of ['/app','/notifications','/private']){
   const start=source.indexOf("if(path==='"+page+"')return new Response(");
   const end=source.indexOf('</head>',start);
   assert.ok(start>=0&&end>start,'missing page '+page);
   const head=source.slice(start,end);
-  assert.ok(head.includes('#354434'),'theme mismatch on '+page);
+  assert.ok(head.includes('#395344'),'theme mismatch on '+page);
   assert.ok(head.includes('/v2/theme.css'),'missing shared stylesheet on '+page);
  }
 });

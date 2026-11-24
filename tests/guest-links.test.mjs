@@ -47,5 +47,5 @@ test('capture page has a deliberate choose-preview-send flow',()=>{
  assert.match(page,/إرسال الصورة الآن/);
  assert.match(page,/جارٍ إرسال الصورة بأمان/);
  assert.match(page,/أُرسلت الصورة بنجاح/);
- assert.match(page,/background:#f8f6f1/);
+ assert.match(page,/background:#FAF6F2/);
 });

@@ -127,3 +127,11 @@ body.lk-v2{background:#f8f6f1!important;color:#202320!important;padding:clamp(14
  .lk-home-premium .lk-night-feature{padding:10px!important}
  .lk-core-nav{bottom:max(8px,env(safe-area-inset-bottom))!important}
 }
+
+/* Keep the signed-out screen and installation offer readable in the light theme. */
+body.lk-guest #main > .card h2,
+body.lk-guest #main > .card p{color:#293B30!important}
+body.lk-guest #main > .card .primary{background:#395344!important;color:#fff!important}
+#lkInstallOffer .lk-install-box{background:#FAF6F2!important;color:#293B30!important}
+#lkInstallOffer .lk-install-box h2,
+#lkInstallOffer .lk-install-box p{color:#293B30!important}

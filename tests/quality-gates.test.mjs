@@ -88,17 +88,22 @@ test('old account chat and encrypted relay implementation are absent',async()=>{
 test.todo('closed-app iOS and Android notification delivery needs physical device test');
 test.todo('unauthorized album access after membership revocation needs isolated D1 fixture');
 
-test('in-app logo uses an alpha-safe existing SVG, without a baked-in white square',async()=>{
+test('in-app logo embeds a PNG with a transparent background',async()=>{
   const logo=await get('/brand/luqyak-2026-logo.svg');
   assert.equal(logo.status,200);
   assert.match(logo.headers.get('content-type')||'',/image\/svg\+xml/);
   const svg=await logo.text();
   assert.match(svg,/<svg\b/);
-  assert.match(svg,/<path\b/);
-  assert.doesNotMatch(svg,/<rect\b[^>]*fill=["'](?:white|#fff(?:fff)?|#F7F1E9)["']/i);
+  const embedded=svg.match(/href="data:image\/png;base64,([^"]+)"/)?.[1];
+  assert.ok(embedded);
+  const png=Buffer.from(embedded,'base64');
+  const transparency=png.indexOf('tRNS');
+  assert.ok(transparency>=12);
+  const alpha=png.subarray(transparency+4,transparency+4+png.readUInt32BE(transparency-4));
+  assert.ok(alpha.includes(0) && alpha.includes(255));
   const app=await get('/app');
   assert.equal(app.status,200);
-  assert.ok((await app.text()).includes('src="/brand/luqyak-2026-logo.svg?v=20261115olivegold3"'));
+  assert.ok((await app.text()).includes('src="/brand/luqyak-2026-logo.svg?v=20261124forestclay"'));
 });
 
 test('account settings no longer expose per-device display preferences',async()=>{
