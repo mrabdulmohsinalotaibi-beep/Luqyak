@@ -15,11 +15,11 @@ const appEnd=worker.indexOf(",{headers:",appStart);
 assert.ok(appStart>=appMarker.length&&appEnd>appStart);
 const html=JSON.parse(worker.slice(appStart,appEnd));
 
-test('active olive and sand palette is applied to the served app', () => {
-  assert.match(html,/<meta name="theme-color" content="#354434">/);
-  assert.match(html,/--wine:#354434/);
-  assert.match(html,/--cream:#F5F0E4/);
-  assert.match(html,/#BE9F57/);
+test('active forest green and warm cream palette is applied to the served app', () => {
+  assert.match(html,/<meta name="theme-color" content="#395344">/);
+  assert.match(html,/--wine:#395344/);
+  assert.match(html,/--cream:#FAF6F2/);
+  assert.match(html,/#963B24/);
 });
 
 test('main navigation keeps three tabs and an accessible create-meeting action', () => {

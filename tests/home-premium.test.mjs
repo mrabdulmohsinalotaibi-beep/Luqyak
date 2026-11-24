@@ -11,13 +11,13 @@ assert.ok(start>=marker.length&&end>start);
 const html=JSON.parse(worker.slice(start,end));
 const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
 test('all inline scripts are valid JS',()=>{for(const [,code] of scripts)assert.doesNotThrow(()=>new Script(code))});
-test('olive-gold home is photo-led and scrollable horizontally',()=>{
+test('forest and terracotta home is photo-led and scrollable horizontally',()=>{
  assert.match(html,/LUQYAK_HOME_PREMIUM_2026_11_16/);
  assert.match(html,/lk-home-story-track/);
  assert.match(html,/lk-home-recent-track/);
  assert.match(html,/scroll-snap-type:x mandatory/);
- assert.match(html,/#354434/);
- assert.match(html,/#BE9F57/);
+ assert.match(html,/#395344/);
+ assert.match(html,/#963B24/);
 });
 test('real authorized photos, navigation and viewer are retained',()=>{
  assert.match(html,/function lkHomeFeedPosts/);

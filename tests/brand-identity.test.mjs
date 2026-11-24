@@ -11,9 +11,9 @@ test('Saudi Najdi identity and accessible app assets are wired', () => {
   assert.match(source, /\/brand\/luqyak-2026-logo\.svg/);
   assert.match(source, /\/brand\/luqyak-2026-icon\.svg/);
   assert.match(source, /\/brand\/luqyak-2026-icon\.png/);
-  assert.match(source, /--wine:#354434/);
-  assert.match(source, /--cream:#F5F0E4/);
-  assert.match(source, /#BE9F57/);
+  assert.match(source, /--wine:#395344/);
+  assert.match(source, /--cream:#FAF6F2/);
+  assert.match(source, /#963B24/);
 });
 
 test('PWA icon and bindings remain available', () => {

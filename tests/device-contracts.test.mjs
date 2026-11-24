@@ -15,27 +15,23 @@ test('installed mobile app has safe-area, active branding and resolvable PNG ico
   const html=await page.text();
   assert.match(html,/viewport-fit=cover/);
   assert.match(html,/apple-mobile-web-app-capable/);
-  assert.match(html,/src="\/brand\/luqyak-2026-logo\.svg\?v=20261115olivegold3"/);
+  assert.match(html,/src="\/brand\/luqyak-2026-logo\.svg\?v=20261124forestclay"/);
   const appManifest=await manifest.json();
   assert.equal(appManifest.display,'standalone');
-  assert.equal(appManifest.theme_color,'#354434');
-  assert.equal(appManifest.background_color,'#F5F0E4');
+  assert.equal(appManifest.theme_color,'#395344');
+  assert.equal(appManifest.background_color,'#FAF6F2');
   assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='192x192'));
   assert.ok(appManifest.icons.some(icon=>icon.type==='image/png' && icon.sizes==='512x512'));
   const touchIcon=html.match(/rel="apple-touch-icon"[^>]+href="([^"]+)"/)?.[1];
-  assert.equal(touchIcon,'/brand/luqyak-2026-icon.png?v=20261115olivegold3','Apple icon version must not repeat');
-  const iconRoute=await worker.fetch(new Request(new URL(touchIcon,origin)),{},ctx);
-  assert.equal(iconRoute.status,302,'Apple icon alias must redirect to hosted PNG');
-  const location=iconRoute.headers.get('location');
-  assert.ok(location?.startsWith(origin+'/brand/luqyak-icon-512.png'));
-  const icon=await worker.fetch(new Request(location),{},ctx);
+  assert.equal(touchIcon,'/brand/luqyak-2026-icon.png?v=20261124forestclay','Apple icon version must not repeat');
+  const icon=await worker.fetch(new Request(new URL(touchIcon,origin)),{},ctx);
   assert.equal(icon.status,200);
   assert.match(icon.headers.get('content-type')||'',/image\/png/);
   const bytes=new Uint8Array(await icon.arrayBuffer());
   assert.deepEqual([...bytes.slice(0,8)],[137,80,78,71,13,10,26,10]);
   const dimensions=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-  assert.equal(dimensions.getUint32(16),512);
-  assert.equal(dimensions.getUint32(20),512);
+  assert.equal(dimensions.getUint32(16),180);
+  assert.equal(dimensions.getUint32(20),180);
 });
 
 test('meetup creation is a three-step wizard and accepts privacy choice',async()=>{
@@ -88,7 +84,7 @@ test('invited participants can join in one tap and share photos while only host 
  assert.match(code,/m\.created_at,u\.display_name FROM lk_meetup_members/);
 });
 
-test('installed theme uses the same olive and sand colors as the app',async()=>{
+test('installed theme uses the same forest green and warm cream colors as the app',async()=>{
  const [manifestResponse,appResponse]=await Promise.all([
   worker.fetch(new Request(origin+'/manifest.webmanifest'),{},ctx),
   worker.fetch(new Request(origin+'/app'),{},ctx)
@@ -97,8 +93,8 @@ test('installed theme uses the same olive and sand colors as the app',async()=>{
  assert.equal(appResponse.status,200);
  const manifest=await manifestResponse.json();
  const html=await appResponse.text();
- assert.equal(manifest.theme_color,'#354434');
- assert.equal(manifest.background_color,'#F5F0E4');
- assert.match(html,/<meta name="theme-color" content="#354434"/);
- assert.match(html,/--wine:#354434/);
+ assert.equal(manifest.theme_color,'#395344');
+ assert.equal(manifest.background_color,'#FAF6F2');
+ assert.match(html,/<meta name="theme-color" content="#395344"/);
+ assert.match(html,/--wine:#395344/);
 });
